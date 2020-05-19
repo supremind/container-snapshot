@@ -1,0 +1,136 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: containersnapshots.atom.supremind.com
+spec:
+  additionalPrinterColumns:
+  - JSONPath: .spec.podName
+    description: pod name of snapshot source
+    name: Pod
+    type: string
+  - JSONPath: .spec.containerName
+    description: container name of snapshot source
+    name: Container
+    type: string
+  - JSONPath: .status.nodeName
+    description: name of the node the source pod running
+    name: Node
+    type: string
+  - JSONPath: .spec.image
+    description: name of generated snapshot image
+    name: Image
+    type: string
+  - JSONPath: .metadata.creationTimestamp
+    name: Age
+    type: date
+  group: atom.supremind.com
+  names:
+    kind: ContainerSnapshot
+    listKind: ContainerSnapshotList
+    plural: containersnapshots
+    singular: containersnapshot
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      description: ContainerSnapshot is the Schema for the containersnapshots API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: ContainerSnapshotSpec defines the desired state of ContainerSnapshot
+          properties:
+            containerName:
+              type: string
+            image:
+              description: Image is the snapshot image, registry host and tag are
+                optional
+              type: string
+            imagePushSecret:
+              description: 'ImagePushSecret is a reference to a docker-registry secret
+                in the same namespace to use for pushing checkout image, same as an
+                ImagePullSecret. More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod'
+              properties:
+                name:
+                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    TODO: Add other useful fields. apiVersion, kind, uid?'
+                  type: string
+              type: object
+            podName:
+              description: PodName+ContainerName is the name of the running container
+                going to have a snapshot
+              type: string
+          required:
+          - containerName
+          - image
+          - imagePushSecret
+          - podName
+          type: object
+        status:
+          description: ContainerSnapshotStatus defines the observed state of ContainerSnapshot
+          properties:
+            conditions:
+              description: The latest available observations of the snapshot
+              items:
+                properties:
+                  lastProbeTime:
+                    description: Last time the condition was checked.
+                    format: date-time
+                    type: string
+                  lastTransitionTime:
+                    description: Last time the condition transit from one status to
+                      another.
+                    format: date-time
+                    type: string
+                  message:
+                    description: Human readable message indicating details about last
+                      transition.
+                    type: string
+                  reason:
+                    description: (brief) reason for the condition's last transition.
+                    type: string
+                  status:
+                    description: Status of the condition, one of True, False, Unknown.
+                    type: string
+                  type:
+                    description: Type of job condition, Complete or Failed.
+                    type: string
+                required:
+                - status
+                - type
+                type: object
+              type: array
+            jobRef:
+              description: JobRef is a reference to the internal snapshot job which
+                does the real commit/push works
+              properties:
+                name:
+                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    TODO: Add other useful fields. apiVersion, kind, uid?'
+                  type: string
+              type: object
+            nodeName:
+              description: NodeName is the name of the node the container running
+                on, the snapshot job must run on this node
+              type: string
+          required:
+          - jobRef
+          - nodeName
+          type: object
+      type: object
+  version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true

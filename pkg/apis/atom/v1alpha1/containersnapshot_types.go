@@ -18,8 +18,8 @@ type ContainerSnapshotSpec struct {
 	PodName       string `json:"podName"`
 	ContainerName string `json:"containerName"`
 
-	// ImageName is the snapshot image name, registry host and tag are optional
-	ImageName string `json:"imageName"`
+	// Image is the snapshot image, registry host and tag are optional
+	Image string `json:"image"`
 
 	// ImagePushSecret is a reference to a docker-registry secret in the same namespace to use for pushing checkout image,
 	// same as an ImagePullSecret.
@@ -78,6 +78,11 @@ const (
 // ContainerSnapshot is the Schema for the containersnapshots API
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=containersnapshots,scope=Namespaced
+// +kubebuilder:printcolumn:name="Pod",type="string",JSONPath=".spec.podName",description="pod name of snapshot source"
+// +kubebuilder:printcolumn:name="Container",type="string",JSONPath=".spec.containerName",description="container name of snapshot source"
+// +kubebuilder:printcolumn:name="Node",type="string",JSONPath=".status.nodeName",description="name of the node the source pod running"
+// +kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.image",description="name of generated snapshot image"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type ContainerSnapshot struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
