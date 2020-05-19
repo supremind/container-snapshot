@@ -16,7 +16,7 @@ spec:
       containers:
         - name: container-snapshot
           # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: supremind/container-snapshot-operator:latest
           command:
           - container-snapshot
           imagePullPolicy: Always
@@ -31,3 +31,5 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "container-snapshot"
+            - name: WORKER_IMAGE
+              value: supremind/container-snapshot-worker:latest
