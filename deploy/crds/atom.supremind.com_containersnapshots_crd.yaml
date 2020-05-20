@@ -105,6 +105,7 @@ spec:
                   type:
                     description: Type of job condition, Complete or Failed.
                     enum:
+                    - SourcePodNotFound
                     - SourceContainerNotFound
                     - SourcePodNotReady
                     - DockerCommitFailed

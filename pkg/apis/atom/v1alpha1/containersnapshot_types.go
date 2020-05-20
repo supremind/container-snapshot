@@ -61,7 +61,7 @@ const (
 
 type SnapshotCondition struct {
 	// Type of job condition, Complete or Failed.
-	// +kubebuilder:validation:Enum=SourceContainerNotFound;SourcePodNotReady;DockerCommitFailed;DockerPushFailed
+	// +kubebuilder:validation:Enum=SourcePodNotFound;SourceContainerNotFound;SourcePodNotReady;DockerCommitFailed;DockerPushFailed
 	Type SnapshotConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=SnapshotConditionType"`
 	// Status of the condition, one of True, False, Unknown.
 	Status v1.ConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status,casttype=k8s.io/api/core/v1.ConditionStatus"`
@@ -82,7 +82,8 @@ type SnapshotCondition struct {
 type SnapshotConditionType string
 
 const (
-	SourceContainerNotFound SnapshotConditionType = "SourceContainerNotFound"
+	SourcePodNotFound       SnapshotConditionType = "SourcePodNotFound"
+	SourceContainerNotFound                       = "SourceContainerNotFound"
 	SourcePodNotReady                             = "SourcePodNotReady"
 	DockerCommitFailed                            = "DockerCommitFailed"
 	DockerPushFailed                              = "DockerPushFailed"

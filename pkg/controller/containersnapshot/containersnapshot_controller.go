@@ -4,6 +4,7 @@ import (
 	"context"
 	stderr "errors"
 	"os"
+	"strings"
 
 	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -25,6 +26,7 @@ const (
 	labelKeyPrefix              = "container-snapshot.atom.supremind.com/"
 	imagePushSecretPath         = "/root/.docker"
 	dockerSocketPath            = "/var/run/docker.sock"
+	containerIDPrefix           = "docker://"
 	envKeyWorkerImage           = "WORKER_IMAGE"
 	envKeyWorkerImagePullSecret = "WORKER_IMAGE_PULL_SECRET"
 	envKeyWorkerServiceAccount  = "WORKER_SERVICE_ACCOUNT"
@@ -33,6 +35,12 @@ const (
 var hostPathSocket = corev1.HostPathSocket
 
 var log = logf.Log.WithName("container snapshot operator")
+
+var (
+	errSourcePodNotFound       = stderr.New("can not find source pod")
+	errSourceContainerNotFound = stderr.New("can not find source container")
+	errSourcePodNotReady       = stderr.New("source pod is not ready")
+)
 
 // Add creates a new ContainerSnapshot Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -93,8 +101,6 @@ type ReconcileContainerSnapshot struct {
 
 // Reconcile reads that state of the cluster for a ContainerSnapshot object and makes changes based on the state read
 // and what is in the ContainerSnapshot.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
-// a Pod as an example
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
@@ -135,10 +141,33 @@ func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapsh
 	reqLogger := log.WithValues("snapshot namespace", cr.Namespace, "snapshot name", cr.Name)
 	reqLogger.Info("on snapshot creation")
 
-	// todo: find source container id and node name
+	nodeName, containerID, e := r.getSourceContainer(cr)
+	if e != nil {
+		if stderr.Is(e, errSourcePodNotFound) {
+			return r.updateSnapshotCondition(cr, &atomv1alpha1.SnapshotCondition{
+				Type:   atomv1alpha1.SourcePodNotFound,
+				Status: corev1.ConditionTrue,
+			})
+		}
+		if stderr.Is(e, errSourceContainerNotFound) {
+			return r.updateSnapshotCondition(cr, &atomv1alpha1.SnapshotCondition{
+				Type:   atomv1alpha1.SourceContainerNotFound,
+				Status: corev1.ConditionTrue,
+			})
+		}
+		if stderr.Is(e, errSourcePodNotReady) {
+			return r.updateSnapshotCondition(cr, &atomv1alpha1.SnapshotCondition{
+				Type:   atomv1alpha1.SourcePodNotReady,
+				Status: corev1.ConditionTrue,
+			})
+		}
+
+		return reconcile.Result{}, e
+	}
+	cr.Status.NodeName = nodeName
 
 	// Define a new Pod object
-	pod := r.newWorkerPod(cr)
+	pod := r.newWorkerPod(cr, containerID)
 	// Set ContainerSnapshot instance as the owner and controller
 	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
 		return reconcile.Result{}, err
@@ -250,8 +279,70 @@ func (r *ReconcileContainerSnapshot) onDeletion(cr *atomv1alpha1.ContainerSnapsh
 	return reconcile.Result{}, e
 }
 
+func (r *ReconcileContainerSnapshot) getSourceContainer(cr *atomv1alpha1.ContainerSnapshot) (nodeName, containerID string, e error) {
+	reqLogger := log.WithValues("snapshot name", cr.Name, "snapshot namespace", cr.Namespace, "source pod", cr.Spec.PodName, "source container", cr.Spec.ContainerName)
+
+	pod := &corev1.Pod{}
+	e = r.client.Get(context.TODO(), types.NamespacedName{Namespace: cr.Namespace, Name: cr.Spec.PodName}, pod)
+	if e != nil {
+		reqLogger.Error(e, "can not get source pod")
+		e = errSourcePodNotFound
+		return
+	}
+
+	if pod.Status.Phase != corev1.PodRunning {
+		e = errSourcePodNotReady
+		reqLogger.Error(e, "source pod should be running")
+		return
+	}
+
+	nodeName = pod.Spec.NodeName
+	for _, c := range pod.Status.ContainerStatuses {
+		if c.Name == cr.Spec.ContainerName {
+			containerID = strings.TrimPrefix(c.ContainerID, containerIDPrefix)
+			break
+		}
+	}
+	if containerID == "" {
+		e = errSourceContainerNotFound
+		reqLogger.Error(e, "source container not found")
+	}
+
+	return
+}
+
+func (r *ReconcileContainerSnapshot) updateSnapshotCondition(cr *atomv1alpha1.ContainerSnapshot, condition *atomv1alpha1.SnapshotCondition) (reconcile.Result, error) {
+	reqLogger := log.WithValues("snapshot name", cr.Name, "snapshot namespace", cr.Namespace)
+
+	condition.LastTransitionTime = metav1.Now()
+
+	firstSeen := true
+	for i, con := range cr.Status.Conditions {
+		if con.Type == condition.Type {
+			condition.LastProbeTime = con.LastProbeTime
+			cr.Status.Conditions[i] = *condition
+			firstSeen = false
+			break
+		}
+	}
+	if firstSeen {
+		condition.LastProbeTime = metav1.Now()
+		cr.Status.Conditions = append(cr.Status.Conditions, *condition)
+	}
+
+	reqLogger.Info("update condition", condition)
+
+	e := r.client.Update(context.TODO(), cr)
+	if e != nil {
+		reqLogger.Error(e, "update snapshot condition")
+		return reconcile.Result{}, e
+	}
+
+	return reconcile.Result{}, nil
+}
+
 // newWorkerPod returns a pod with the same name/namespace as the cr
-func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnapshot) *corev1.Pod {
+func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnapshot, containerID string) *corev1.Pod {
 	labels := map[string]string{
 		labelKeyPrefix + "snapshot":  cr.Name,
 		labelKeyPrefix + "pod":       cr.Spec.PodName,
