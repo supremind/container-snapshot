@@ -38,6 +38,9 @@ type ContainerSnapshotStatus struct {
 	// NodeName is the name of the node the container running on, the snapshot job must run on this node
 	NodeName string `json:"nodeName"`
 
+	// ContainerID is the docker id of the source container
+	ContainerID string `json:"containerID"`
+
 	// container snapshot worker state
 	// +kubebuilder:validation:Enum=Created;Running;Complete;Failed;Unknown
 	WorkerState WorkerState `json:"state"`

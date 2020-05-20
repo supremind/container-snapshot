@@ -165,9 +165,10 @@ func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapsh
 		return reconcile.Result{}, e
 	}
 	cr.Status.NodeName = nodeName
+	cr.Status.ContainerID = containerID
 
 	// Define a new Pod object
-	pod := r.newWorkerPod(cr, containerID)
+	pod := r.newWorkerPod(cr)
 	// Set ContainerSnapshot instance as the owner and controller
 	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
 		return reconcile.Result{}, err
@@ -342,7 +343,7 @@ func (r *ReconcileContainerSnapshot) updateSnapshotCondition(cr *atomv1alpha1.Co
 }
 
 // newWorkerPod returns a pod with the same name/namespace as the cr
-func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnapshot, containerID string) *corev1.Pod {
+func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnapshot) *corev1.Pod {
 	labels := map[string]string{
 		labelKeyPrefix + "snapshot":  cr.Name,
 		labelKeyPrefix + "pod":       cr.Spec.PodName,

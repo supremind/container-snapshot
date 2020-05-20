@@ -116,6 +116,9 @@ spec:
                 - type
                 type: object
               type: array
+            containerID:
+              description: ContainerID is the docker id of the source container
+              type: string
             jobRef:
               description: JobRef is a reference to the internal snapshot job which
                 does the real commit/push works
@@ -139,6 +142,7 @@ spec:
               - Unknown
               type: string
           required:
+          - containerID
           - jobRef
           - nodeName
           - state
