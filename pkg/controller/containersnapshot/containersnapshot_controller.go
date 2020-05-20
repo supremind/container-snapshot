@@ -26,6 +26,7 @@ const (
 	dockerSocketPath            = "/var/run/docker.sock"
 	envKeyWorkerImage           = "WORKER_IMAGE"
 	envKeyWorkerImagePullSecret = "WORKER_IMAGE_PULL_SECRET"
+	envKeyWorkerServiceAccount  = "WORKER_SERVICE_ACCOUNT"
 )
 
 var hostPathSocket = corev1.HostPathSocket
@@ -45,6 +46,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:                mgr.GetScheme(),
 		workerImage:           os.Getenv(envKeyWorkerImage),
 		workerImagePullSecret: os.Getenv(envKeyWorkerImagePullSecret),
+		workerServiceAccount:  os.Getenv(envKeyWorkerServiceAccount),
 	}
 }
 
@@ -62,7 +64,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create that are owned by the primary resource
 	// Watch for changes to secondary resource Pods and requeue the owner ContainerSnapshot
 	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
@@ -86,6 +87,7 @@ type ReconcileContainerSnapshot struct {
 	scheme                *runtime.Scheme
 	workerImage           string
 	workerImagePullSecret string
+	workerServiceAccount  string
 }
 
 // Reconcile reads that state of the cluster for a ContainerSnapshot object and makes changes based on the state read
@@ -113,42 +115,70 @@ func (r *ReconcileContainerSnapshot) Reconcile(request reconcile.Request) (recon
 		return reconcile.Result{}, err
 	}
 
-	// todo: check condition to make different decisions on creation, updating, deletion
+	if !instance.DeletionTimestamp.IsZero() {
+		return r.onDeletion(instance)
+	}
+
+	switch instance.Status.WorkerState {
+	case atomv1alpha1.WorkerCreated, atomv1alpha1.WorkerRunning:
+		return r.onUpdate(instance)
+	case atomv1alpha1.WorkerFailed, atomv1alpha1.WorkerComplete:
+		// do nothing
+		return reconcile.Result{}, nil
+	default:
+		return r.onCreation(instance)
+	}
+}
+
+func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
+	reqLogger := log.WithValues("Request.Namespace", cr.Namespace, "Request.Name", cr.Name)
+
+	// todo: find source container id and node name
 
 	// Define a new Pod object
-	pod := r.newPodForCR(instance)
-
+	pod := r.newWorkerPod(cr)
 	// Set ContainerSnapshot instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
+
+	reqLogger = reqLogger.WithValues("Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
 
 	// Check if this Pod already exists
 	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Pod created successfully - don't requeue
-
-		// todo: update snapshot condition
-
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
+	if err != nil && !errors.IsNotFound(err) {
+		return reconcile.Result{}, err
+	}
+	if !errors.IsNotFound(err) {
+		reqLogger.Info("Pod already exists")
 		return reconcile.Result{}, nil
-	} else if err != nil {
+	}
+
+	reqLogger.Info("Creating a new Pod")
+	err = r.client.Create(context.TODO(), pod)
+	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	// Pod created successfully
+
+	// todo: update snapshot state
+	cr.Status.WorkerState = atomv1alpha1.WorkerCreated
+
 	return reconcile.Result{}, nil
 }
 
-// newPodForCR returns a pod with the same name/namespace as the cr
-func (r *ReconcileContainerSnapshot) newPodForCR(cr *atomv1alpha1.ContainerSnapshot) *corev1.Pod {
+func (r *ReconcileContainerSnapshot) onUpdate(cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
+	// todo
+}
+
+func (r *ReconcileContainerSnapshot) onDeletion(cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
+	// todo
+}
+
+// newWorkerPod returns a pod with the same name/namespace as the cr
+func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnapshot) *corev1.Pod {
 	labels := map[string]string{
 		labelKeyPrefix + "snapshot":  cr.Name,
 		labelKeyPrefix + "pod":       cr.Spec.PodName,
@@ -169,7 +199,10 @@ func (r *ReconcileContainerSnapshot) newPodForCR(cr *atomv1alpha1.ContainerSnaps
 			ImagePullSecrets: []corev1.LocalObjectReference{{
 				Name: r.workerImagePullSecret,
 			}},
-			RestartPolicy: corev1.RestartPolicyNever,
+			RestartPolicy:      corev1.RestartPolicyNever,
+			NodeName:           cr.Status.NodeName,
+			ServiceAccountName: r.workerServiceAccount,
+
 			Containers: []corev1.Container{{
 				Name:  "snapshot-worker",
 				Image: r.workerImage,
@@ -186,7 +219,6 @@ func (r *ReconcileContainerSnapshot) newPodForCR(cr *atomv1alpha1.ContainerSnaps
 					},
 				},
 			}},
-			NodeName: cr.Status.NodeName,
 			Volumes: []corev1.Volume{
 				{
 					Name: "image-push-secret",
