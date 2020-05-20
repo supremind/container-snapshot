@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"github.com/operator-framework/operator-sdk/pkg/status"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -49,7 +50,7 @@ type ContainerSnapshotStatus struct {
 	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge
-	Conditions []SnapshotCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Conditions status.Conditions `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 type WorkerState string
@@ -62,34 +63,12 @@ const (
 	WorkerUnknown              = "Unknown"
 )
 
-type SnapshotCondition struct {
-	// Type of job condition, Complete or Failed.
-	// +kubebuilder:validation:Enum=SourcePodNotFound;SourceContainerNotFound;SourcePodNotReady;DockerCommitFailed;DockerPushFailed
-	Type SnapshotConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=SnapshotConditionType"`
-	// Status of the condition, one of True, False, Unknown.
-	Status v1.ConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status,casttype=k8s.io/api/core/v1.ConditionStatus"`
-	// Last time the condition was checked.
-	// +optional
-	LastProbeTime metav1.Time `json:"lastProbeTime,omitempty" protobuf:"bytes,3,opt,name=lastProbeTime"`
-	// Last time the condition transit from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
-	// (brief) reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty" protobuf:"bytes,5,opt,name=reason"`
-	// Human readable message indicating details about last transition.
-	// +optional
-	Message string `json:"message,omitempty" protobuf:"bytes,6,opt,name=message"`
-}
-
-type SnapshotConditionType string
-
 const (
-	SourcePodNotFound       SnapshotConditionType = "SourcePodNotFound"
-	SourceContainerNotFound                       = "SourceContainerNotFound"
-	SourcePodNotReady                             = "SourcePodNotReady"
-	DockerCommitFailed                            = "DockerCommitFailed"
-	DockerPushFailed                              = "DockerPushFailed"
+	SourcePodNotFound       status.ConditionType = "SourcePodNotFound"
+	SourceContainerNotFound                      = "SourceContainerNotFound"
+	SourcePodNotReady                            = "SourcePodNotReady"
+	DockerCommitFailed                           = "DockerCommitFailed"
+	DockerPushFailed                             = "DockerPushFailed"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

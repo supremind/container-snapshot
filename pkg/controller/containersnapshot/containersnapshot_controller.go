@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/operator-framework/operator-sdk/pkg/status"
 	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -141,29 +142,41 @@ func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapsh
 	reqLogger := log.WithValues("snapshot namespace", cr.Namespace, "snapshot name", cr.Name)
 	reqLogger.Info("on snapshot creation")
 
+	stale := false
+	defer func() {
+		if stale {
+			if e := r.client.Update(context.TODO(), cr); e != nil {
+				reqLogger.Error(e, "update snapshot worker state", "to", atomv1alpha1.WorkerCreated)
+			}
+		}
+	}()
+
 	nodeName, containerID, e := r.getSourceContainer(cr)
 	if e != nil {
 		if stderr.Is(e, errSourcePodNotFound) {
-			return r.updateSnapshotCondition(cr, &atomv1alpha1.SnapshotCondition{
-				Type:   atomv1alpha1.SourcePodNotFound,
-				Status: corev1.ConditionTrue,
+			stale = cr.Status.Conditions.SetCondition(status.Condition{
+				Type:               atomv1alpha1.SourcePodNotFound,
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
 			})
-		}
-		if stderr.Is(e, errSourceContainerNotFound) {
-			return r.updateSnapshotCondition(cr, &atomv1alpha1.SnapshotCondition{
-				Type:   atomv1alpha1.SourceContainerNotFound,
-				Status: corev1.ConditionTrue,
+		} else if stderr.Is(e, errSourceContainerNotFound) {
+			stale = cr.Status.Conditions.SetCondition(status.Condition{
+				Type:               atomv1alpha1.SourceContainerNotFound,
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
 			})
-		}
-		if stderr.Is(e, errSourcePodNotReady) {
-			return r.updateSnapshotCondition(cr, &atomv1alpha1.SnapshotCondition{
-				Type:   atomv1alpha1.SourcePodNotReady,
-				Status: corev1.ConditionTrue,
+		} else if stderr.Is(e, errSourcePodNotReady) {
+			stale = cr.Status.Conditions.SetCondition(status.Condition{
+				Type:               atomv1alpha1.SourcePodNotReady,
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
 			})
 		}
 
 		return reconcile.Result{}, e
 	}
+
+	stale = cr.Status.NodeName != nodeName || cr.Status.ContainerID != containerID
 	cr.Status.NodeName = nodeName
 	cr.Status.ContainerID = containerID
 
@@ -194,12 +207,8 @@ func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapsh
 		return reconcile.Result{}, err
 	}
 
-	// todo: update snapshot state
+	stale = true
 	cr.Status.WorkerState = atomv1alpha1.WorkerCreated
-	if e := r.client.Update(context.TODO(), cr); e != nil {
-		reqLogger.Error(e, "update snapshot worker state", "to", atomv1alpha1.WorkerCreated)
-		return reconcile.Result{}, e
-	}
 
 	return reconcile.Result{}, nil
 }
@@ -310,36 +319,6 @@ func (r *ReconcileContainerSnapshot) getSourceContainer(cr *atomv1alpha1.Contain
 	}
 
 	return
-}
-
-func (r *ReconcileContainerSnapshot) updateSnapshotCondition(cr *atomv1alpha1.ContainerSnapshot, condition *atomv1alpha1.SnapshotCondition) (reconcile.Result, error) {
-	reqLogger := log.WithValues("snapshot name", cr.Name, "snapshot namespace", cr.Namespace)
-
-	condition.LastTransitionTime = metav1.Now()
-
-	firstSeen := true
-	for i, con := range cr.Status.Conditions {
-		if con.Type == condition.Type {
-			condition.LastProbeTime = con.LastProbeTime
-			cr.Status.Conditions[i] = *condition
-			firstSeen = false
-			break
-		}
-	}
-	if firstSeen {
-		condition.LastProbeTime = metav1.Now()
-		cr.Status.Conditions = append(cr.Status.Conditions, *condition)
-	}
-
-	reqLogger.Info("update condition", condition)
-
-	e := r.client.Update(context.TODO(), cr)
-	if e != nil {
-		reqLogger.Error(e, "update snapshot condition")
-		return reconcile.Result{}, e
-	}
-
-	return reconcile.Result{}, nil
 }
 
 // newWorkerPod returns a pod with the same name/namespace as the cr
