@@ -33,15 +33,15 @@ const (
 	envKeyWorkerServiceAccount  = "WORKER_SERVICE_ACCOUNT"
 )
 
-var hostPathSocket = corev1.HostPathSocket
-
-var log = logf.Log.WithName("container snapshot operator")
-
 var (
+	hostPathSocket = corev1.HostPathSocket
+
 	errSourcePodNotFound       = stderr.New("can not find source pod")
 	errSourceContainerNotFound = stderr.New("can not find source container")
 	errSourcePodNotReady       = stderr.New("source pod is not ready")
 )
+
+var log = logf.Log.WithName("container snapshot operator")
 
 // Add creates a new ContainerSnapshot Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.

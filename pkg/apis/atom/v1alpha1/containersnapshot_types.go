@@ -6,9 +6,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // ContainerSnapshotSpec defines the desired state of ContainerSnapshot
 type ContainerSnapshotSpec struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
@@ -53,6 +50,7 @@ type ContainerSnapshotStatus struct {
 	Conditions status.Conditions `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
+// WorkerState indicates underlaying snapshot worker state
 type WorkerState string
 
 const (
@@ -63,6 +61,7 @@ const (
 	WorkerUnknown              = "Unknown"
 )
 
+// Conditions indicate errors occurred when creating or running the snapshot worker pod
 const (
 	SourcePodNotFound       status.ConditionType = "SourcePodNotFound"
 	SourceContainerNotFound                      = "SourceContainerNotFound"
