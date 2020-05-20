@@ -2,6 +2,7 @@ package containersnapshot
 
 import (
 	"context"
+	stderr "errors"
 	"os"
 
 	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
@@ -31,7 +32,7 @@ const (
 
 var hostPathSocket = corev1.HostPathSocket
 
-var log = logf.Log.WithName("controller_containersnapshot")
+var log = logf.Log.WithName("container snapshot operator")
 
 // Add creates a new ContainerSnapshot Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -131,7 +132,8 @@ func (r *ReconcileContainerSnapshot) Reconcile(request reconcile.Request) (recon
 }
 
 func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", cr.Namespace, "Request.Name", cr.Name)
+	reqLogger := log.WithValues("snapshot namespace", cr.Namespace, "snapshot name", cr.Name)
+	reqLogger.Info("on snapshot creation")
 
 	// todo: find source container id and node name
 
@@ -142,7 +144,7 @@ func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapsh
 		return reconcile.Result{}, err
 	}
 
-	reqLogger = reqLogger.WithValues("Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+	reqLogger = reqLogger.WithValues("pod namespace", pod.Namespace, "pod name", pod.Name)
 
 	// Check if this Pod already exists
 	found := &corev1.Pod{}
@@ -151,8 +153,9 @@ func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapsh
 		return reconcile.Result{}, err
 	}
 	if !errors.IsNotFound(err) {
-		reqLogger.Info("Pod already exists")
-		return reconcile.Result{}, nil
+		reqLogger.Info("pod already exists")
+		// update worker state if necessary
+		return r.onUpdate(cr)
 	}
 
 	reqLogger.Info("Creating a new Pod")
@@ -161,20 +164,90 @@ func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapsh
 		return reconcile.Result{}, err
 	}
 
-	// Pod created successfully
-
 	// todo: update snapshot state
 	cr.Status.WorkerState = atomv1alpha1.WorkerCreated
+	if e := r.client.Update(context.TODO(), cr); e != nil {
+		reqLogger.Error(e, "update snapshot worker state", "to", atomv1alpha1.WorkerCreated)
+		return reconcile.Result{}, e
+	}
 
 	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileContainerSnapshot) onUpdate(cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
-	// todo
+	reqLogger := log.WithValues("snapshot name", cr.Name, "snapshot namespace", cr.Namespace)
+	reqLogger.Info("on snapshot updating")
+
+	pods := corev1.PodList{}
+	e := r.client.List(context.TODO(), &pods, client.InNamespace(cr.Namespace), client.MatchingLabels{
+		labelKeyPrefix + "snapshot": cr.Name,
+	})
+	if e != nil {
+		reqLogger.Error(e, "list snapshot worker pod failed")
+		return reconcile.Result{}, e
+	}
+	if len(pods.Items) != 1 {
+		e := stderr.New("there should be exactly 1 snapshot worker pod")
+		reqLogger.Error(e, "list snapshot worker pods", "got", len(pods.Items))
+
+		if len(pods.Items) == 0 {
+			// requeue
+			return reconcile.Result{}, e
+		}
+
+		// remove additional pods
+		// fixme: is there any conccurrency problem?
+		for _, pod := range pods.Items[1:] {
+			e := r.client.Delete(context.TODO(), &pod)
+			if e != nil {
+				reqLogger.Error(e, "deleting additional snapshot worker pod", "pod name", pod.Name, "pod namespace", pod.Namespace)
+			}
+		}
+	}
+
+	pod := pods.Items[0]
+	reqLogger = reqLogger.WithValues("pod name", pod.Name, "pod namespace", pod.Namespace)
+	var state atomv1alpha1.WorkerState
+
+	switch pod.Status.Phase {
+	case corev1.PodPending:
+		state = atomv1alpha1.WorkerCreated
+	case corev1.PodRunning:
+		state = atomv1alpha1.WorkerRunning
+	case corev1.PodSucceeded:
+		state = atomv1alpha1.WorkerComplete
+	case corev1.PodFailed:
+		state = atomv1alpha1.WorkerFailed
+	default:
+		state = atomv1alpha1.WorkerUnknown
+	}
+
+	if cr.Status.WorkerState == state {
+		return reconcile.Result{}, nil
+	}
+
+	reqLogger.Info("update snapshot worker state", "from", cr.Status.WorkerState, "to", state)
+	cr.Status.WorkerState = state
+	if e := r.client.Update(context.TODO(), cr); e != nil {
+		reqLogger.Error(e, "update snapshot worker state")
+		return reconcile.Result{}, e
+	}
+
+	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileContainerSnapshot) onDeletion(cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
-	// todo
+	reqLogger := log.WithValues("snapshot name", cr.Name, "snapshot namespace", cr.Namespace)
+	reqLogger.Info("on snapshot deletion")
+
+	e := r.client.DeleteAllOf(context.TODO(), &corev1.Pod{}, client.InNamespace(cr.Namespace), client.MatchingLabels{
+		labelKeyPrefix + "snapshot": cr.Name,
+	})
+	if e != nil {
+		reqLogger.Error(e, "delete all worker pods on deleting snapshot")
+	}
+
+	return reconcile.Result{}, e
 }
 
 // newWorkerPod returns a pod with the same name/namespace as the cr
@@ -206,6 +279,7 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 			Containers: []corev1.Container{{
 				Name:  "snapshot-worker",
 				Image: r.workerImage,
+				// todo
 				// Command: []string{"sleep", "3600"},
 				VolumeMounts: []corev1.VolumeMount{
 					{
