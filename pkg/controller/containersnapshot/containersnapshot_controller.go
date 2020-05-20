@@ -2,6 +2,7 @@ package containersnapshot
 
 import (
 	"context"
+	"os"
 
 	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -19,9 +20,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const labelKeyPrefix = "container-snapshot.atom.supremind.com/"
-const imagePushSecretPath = "/root/.docker"
-const dockerSocketPath = "/var/run/docker.sock"
+const (
+	labelKeyPrefix              = "container-snapshot.atom.supremind.com/"
+	imagePushSecretPath         = "/root/.docker"
+	dockerSocketPath            = "/var/run/docker.sock"
+	envKeyWorkerImage           = "WORKER_IMAGE"
+	envKeyWorkerImagePullSecret = "WORKER_IMAGE_PULL_SECRET"
+)
 
 var hostPathSocket = corev1.HostPathSocket
 
@@ -35,7 +40,12 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileContainerSnapshot{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileContainerSnapshot{
+		client:                mgr.GetClient(),
+		scheme:                mgr.GetScheme(),
+		workerImage:           os.Getenv(envKeyWorkerImage),
+		workerImagePullSecret: os.Getenv(envKeyWorkerImagePullSecret),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -72,9 +82,10 @@ var _ reconcile.Reconciler = &ReconcileContainerSnapshot{}
 type ReconcileContainerSnapshot struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client      client.Client
-	scheme      *runtime.Scheme
-	workerImage string
+	client                client.Client
+	scheme                *runtime.Scheme
+	workerImage           string
+	workerImagePullSecret string
 }
 
 // Reconcile reads that state of the cluster for a ContainerSnapshot object and makes changes based on the state read
@@ -102,6 +113,8 @@ func (r *ReconcileContainerSnapshot) Reconcile(request reconcile.Request) (recon
 		return reconcile.Result{}, err
 	}
 
+	// todo: check condition to make different decisions on creation, updating, deletion
+
 	// Define a new Pod object
 	pod := r.newPodForCR(instance)
 
@@ -121,6 +134,9 @@ func (r *ReconcileContainerSnapshot) Reconcile(request reconcile.Request) (recon
 		}
 
 		// Pod created successfully - don't requeue
+
+		// todo: update snapshot condition
+
 		return reconcile.Result{}, nil
 	} else if err != nil {
 		return reconcile.Result{}, err
@@ -131,7 +147,7 @@ func (r *ReconcileContainerSnapshot) Reconcile(request reconcile.Request) (recon
 	return reconcile.Result{}, nil
 }
 
-// newPodForCR returns a busybox pod with the same name/namespace as the cr
+// newPodForCR returns a pod with the same name/namespace as the cr
 func (r *ReconcileContainerSnapshot) newPodForCR(cr *atomv1alpha1.ContainerSnapshot) *corev1.Pod {
 	labels := map[string]string{
 		labelKeyPrefix + "snapshot":  cr.Name,
@@ -145,32 +161,31 @@ func (r *ReconcileContainerSnapshot) newPodForCR(cr *atomv1alpha1.ContainerSnaps
 
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-snapshot",
-			Namespace: cr.Namespace,
-			Labels:    labels,
+			GenerateName: cr.Name + "-",
+			Namespace:    cr.Namespace,
+			Labels:       labels,
 		},
 		Spec: corev1.PodSpec{
-			ImagePullSecrets: func() []corev1.LocalObjectReference {
-				// todo
-			}(),
-			Containers: []corev1.Container{
-				{
-					Name:  "snapshot-worker",
-					Image: r.workerImage,
-					// Command:      []string{"sleep", "3600"},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "image-push-secret",
-							MountPath: imagePushSecretPath,
-							ReadOnly:  true,
-						},
-						{
-							Name:      "docker-socket",
-							MountPath: dockerSocketPath,
-						},
+			ImagePullSecrets: []corev1.LocalObjectReference{{
+				Name: r.workerImagePullSecret,
+			}},
+			RestartPolicy: corev1.RestartPolicyNever,
+			Containers: []corev1.Container{{
+				Name:  "snapshot-worker",
+				Image: r.workerImage,
+				// Command: []string{"sleep", "3600"},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "image-push-secret",
+						MountPath: imagePushSecretPath,
+						ReadOnly:  true,
+					},
+					{
+						Name:      "docker-socket",
+						MountPath: dockerSocketPath,
 					},
 				},
-			},
+			}},
 			NodeName: cr.Status.NodeName,
 			Volumes: []corev1.Volume{
 				{
