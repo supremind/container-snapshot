@@ -135,6 +135,7 @@ spec:
               - Running
               - Complete
               - Failed
+              - Unknown
               type: string
           required:
           - jobRef

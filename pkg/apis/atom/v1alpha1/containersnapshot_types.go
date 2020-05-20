@@ -39,7 +39,7 @@ type ContainerSnapshotStatus struct {
 	NodeName string `json:"nodeName"`
 
 	// container snapshot worker state
-	// +kubebuilder:validation:Enum=Created;Running;Complete;Failed
+	// +kubebuilder:validation:Enum=Created;Running;Complete;Failed;Unknown
 	WorkerState WorkerState `json:"state"`
 
 	// The latest available observations of the snapshot
@@ -56,6 +56,7 @@ const (
 	WorkerRunning              = "Running"
 	WorkerComplete             = "Complete"
 	WorkerFailed               = "Failed"
+	WorkerUnknown              = "Unknown"
 )
 
 type SnapshotCondition struct {
