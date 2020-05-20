@@ -10,7 +10,6 @@ import (
 
 // ContainerSnapshotSpec defines the desired state of ContainerSnapshot
 type ContainerSnapshotSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 
@@ -39,6 +38,10 @@ type ContainerSnapshotStatus struct {
 	// NodeName is the name of the node the container running on, the snapshot job must run on this node
 	NodeName string `json:"nodeName"`
 
+	// container snapshot worker state
+	// +kubebuilder:validation:Enum=Created;Running;Complete;Failed
+	WorkerState WorkerState `json:"state"`
+
 	// The latest available observations of the snapshot
 	// +optional
 	// +patchMergeKey=type
@@ -46,8 +49,18 @@ type ContainerSnapshotStatus struct {
 	Conditions []SnapshotCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
+type WorkerState string
+
+const (
+	WorkerCreated  WorkerState = "Created"
+	WorkerRunning              = "Running"
+	WorkerComplete             = "Complete"
+	WorkerFailed               = "Failed"
+)
+
 type SnapshotCondition struct {
 	// Type of job condition, Complete or Failed.
+	// +kubebuilder:validation:Enum=SourceContainerNotFound;SourcePodNotReady;DockerCommitFailed;DockerPushFailed
 	Type SnapshotConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=SnapshotConditionType"`
 	// Status of the condition, one of True, False, Unknown.
 	Status v1.ConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status,casttype=k8s.io/api/core/v1.ConditionStatus"`
@@ -68,9 +81,10 @@ type SnapshotCondition struct {
 type SnapshotConditionType string
 
 const (
-	SnapshotCreating SnapshotConditionType = "Creating"
-	SnapshotComplete SnapshotConditionType = "Complete"
-	SnapshotFailed   SnapshotConditionType = "Failed"
+	SourceContainerNotFound SnapshotConditionType = "SourceContainerNotFound"
+	SourcePodNotReady                             = "SourcePodNotReady"
+	DockerCommitFailed                            = "DockerCommitFailed"
+	DockerPushFailed                              = "DockerPushFailed"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -78,11 +92,11 @@ const (
 // ContainerSnapshot is the Schema for the containersnapshots API
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=containersnapshots,scope=Namespaced
+// +kubebuilder:printcolumn:name="Name",type="string",JSONPath=".metadata.name"
 // +kubebuilder:printcolumn:name="Pod",type="string",JSONPath=".spec.podName",description="pod name of snapshot source"
 // +kubebuilder:printcolumn:name="Container",type="string",JSONPath=".spec.containerName",description="container name of snapshot source"
-// +kubebuilder:printcolumn:name="Node",type="string",JSONPath=".status.nodeName",description="name of the node the source pod running"
-// +kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.image",description="name of generated snapshot image"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="container snapshot worker state"
 type ContainerSnapshot struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

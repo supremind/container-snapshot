@@ -4,6 +4,9 @@ metadata:
   name: containersnapshots.atom.supremind.com
 spec:
   additionalPrinterColumns:
+  - JSONPath: .metadata.name
+    name: Name
+    type: string
   - JSONPath: .spec.podName
     description: pod name of snapshot source
     name: Pod
@@ -12,17 +15,13 @@ spec:
     description: container name of snapshot source
     name: Container
     type: string
-  - JSONPath: .status.nodeName
-    description: name of the node the source pod running
-    name: Node
-    type: string
-  - JSONPath: .spec.image
-    description: name of generated snapshot image
-    name: Image
-    type: string
   - JSONPath: .metadata.creationTimestamp
     name: Age
     type: date
+  - JSONPath: .status.state
+    description: container snapshot worker state
+    name: State
+    type: string
   group: atom.supremind.com
   names:
     kind: ContainerSnapshot
@@ -105,6 +104,11 @@ spec:
                     type: string
                   type:
                     description: Type of job condition, Complete or Failed.
+                    enum:
+                    - SourceContainerNotFound
+                    - SourcePodNotReady
+                    - DockerCommitFailed
+                    - DockerPushFailed
                     type: string
                 required:
                 - status
@@ -124,9 +128,18 @@ spec:
               description: NodeName is the name of the node the container running
                 on, the snapshot job must run on this node
               type: string
+            state:
+              description: container snapshot worker state
+              enum:
+              - Created
+              - Running
+              - Complete
+              - Failed
+              type: string
           required:
           - jobRef
           - nodeName
+          - state
           type: object
       type: object
   version: v1alpha1
