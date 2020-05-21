@@ -1,15 +1,28 @@
-FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
+FROM golang:1.13-alpine AS provision
 
-ENV OPERATOR=/usr/local/bin/container-snapshot \
-    USER_UID=1001 \
-    USER_NAME=container-snapshot
+ARG GOPROXY
+ENV GO111MODULE=on
+WORKDIR /src
 
-# install operator binary
-COPY build/_output/bin/container-snapshot ${OPERATOR}
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
 
-COPY build/bin /usr/local/bin
-RUN  /usr/local/bin/user_setup
+COPY . .
+RUN go mod verify
 
-ENTRYPOINT ["/usr/local/bin/entrypoint"]
 
-USER ${USER_UID}
+FROM provision AS build-operator
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/_output/operator ./cmd/manager
+
+FROM provision AS build-worker
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/_output/worker ./cmd/worker
+
+
+FROM alpine:3.11 AS release-operator
+COPY --from=build-operator /src/build/_output/operator /usr/local/bin/container-snapshot-operator
+ENTRYPOINT [ "container-snapshot-operator" ]
+
+FROM alpine:3.11 AS release-worker
+COPY --from=build-worker /src/build/_output/worker /usr/local/bin/container-snapshot-worker
+ENTRYPOINT [ "container-snapshot-worker" ]
