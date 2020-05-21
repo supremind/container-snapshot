@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -34,8 +35,6 @@ const (
 )
 
 var (
-	hostPathSocket = corev1.HostPathSocket
-
 	errSourcePodNotFound       = stderr.New("can not find source pod")
 	errSourceContainerNotFound = stderr.New("can not find source container")
 	errSourcePodNotReady       = stderr.New("source pod is not ready")
@@ -381,7 +380,7 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: dockerSocketPath,
-							Type: &hostPathSocket,
+							Type: (*corev1.HostPathType)(pointer.StringPtr(string(corev1.HostPathSocket))),
 						},
 					},
 				},
