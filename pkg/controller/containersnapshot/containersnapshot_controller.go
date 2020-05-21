@@ -136,7 +136,7 @@ func (r *ReconcileContainerSnapshot) Reconcile(request reconcile.Request) (recon
 	}
 
 	switch instance.Status.WorkerState {
-	case atomv1alpha1.WorkerCreated, atomv1alpha1.WorkerRunning:
+	case atomv1alpha1.WorkerCreated, atomv1alpha1.WorkerRunning, atomv1alpha1.WorkerUnknown:
 		return r.onUpdate(ctx, instance)
 	case atomv1alpha1.WorkerFailed, atomv1alpha1.WorkerComplete:
 		// do nothing
@@ -278,7 +278,7 @@ func (r *ReconcileContainerSnapshot) onUpdate(ctx context.Context, cr *atomv1alp
 }
 
 func (r *ReconcileContainerSnapshot) applyUpdate(ctx context.Context, cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
-	e := r.client.Patch(ctx, cr, client.Apply)
+	e := r.client.Status().Patch(ctx, cr, client.Apply)
 	if e != nil {
 		logger(cr).Error(e, "update snapshot worker state")
 	}
