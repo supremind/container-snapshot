@@ -41,7 +41,7 @@ type ContainerSnapshotStatus struct {
 
 	// container snapshot worker state
 	// +kubebuilder:validation:Enum=Created;Running;Complete;Failed;Unknown
-	WorkerState WorkerState `json:"state"`
+	WorkerState WorkerState `json:"workerState"`
 
 	// The latest available observations of the snapshot
 	// +optional
@@ -79,7 +79,7 @@ const (
 // +kubebuilder:printcolumn:name="Pod",type="string",JSONPath=".spec.podName",description="pod name of snapshot source"
 // +kubebuilder:printcolumn:name="Container",type="string",JSONPath=".spec.containerName",description="container name of snapshot source"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="container snapshot worker state"
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.workerState",description="container snapshot worker state"
 type ContainerSnapshot struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

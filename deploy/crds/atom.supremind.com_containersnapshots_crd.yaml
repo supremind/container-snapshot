@@ -18,7 +18,7 @@ spec:
   - JSONPath: .metadata.creationTimestamp
     name: Age
     type: date
-  - JSONPath: .status.state
+  - JSONPath: .status.workerState
     description: container snapshot worker state
     name: State
     type: string
@@ -139,7 +139,7 @@ spec:
               description: NodeName is the name of the node the container running
                 on, the snapshot job must run on this node
               type: string
-            state:
+            workerState:
               description: container snapshot worker state
               enum:
               - Created
@@ -152,7 +152,7 @@ spec:
           - containerID
           - jobRef
           - nodeName
-          - state
+          - workerState
           type: object
       type: object
   version: v1alpha1
