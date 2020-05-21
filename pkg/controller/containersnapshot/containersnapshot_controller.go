@@ -145,9 +145,7 @@ func (r *ReconcileContainerSnapshot) onCreation(cr *atomv1alpha1.ContainerSnapsh
 	stale := false
 	defer func() {
 		if stale {
-			if e := r.client.Update(context.TODO(), cr); e != nil {
-				reqLogger.Error(e, "update snapshot worker state", "to", atomv1alpha1.WorkerCreated)
-			}
+			r.applyUpdate(cr)
 		}
 	}()
 
@@ -267,12 +265,8 @@ func (r *ReconcileContainerSnapshot) onUpdate(cr *atomv1alpha1.ContainerSnapshot
 
 	reqLogger.Info("update snapshot worker state", "from", cr.Status.WorkerState, "to", state)
 	cr.Status.WorkerState = state
-	if e := r.client.Update(context.TODO(), cr); e != nil {
-		reqLogger.Error(e, "update snapshot worker state")
-		return reconcile.Result{}, e
-	}
 
-	return reconcile.Result{}, nil
+	return r.applyUpdate(cr)
 }
 
 func (r *ReconcileContainerSnapshot) onDeletion(cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
@@ -284,6 +278,15 @@ func (r *ReconcileContainerSnapshot) onDeletion(cr *atomv1alpha1.ContainerSnapsh
 	})
 	if e != nil {
 		reqLogger.Error(e, "delete all worker pods on deleting snapshot")
+	}
+
+	return reconcile.Result{}, e
+}
+
+func (r *ReconcileContainerSnapshot) applyUpdate(cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
+	e := r.client.Patch(context.TODO(), cr, client.Apply)
+	if e != nil {
+		log.WithValues("snapshot name", cr.Name, "snapshot namespace", cr.Namespace).Error(e, "update snapshot worker state")
 	}
 
 	return reconcile.Result{}, e
