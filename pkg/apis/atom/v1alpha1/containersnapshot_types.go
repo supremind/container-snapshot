@@ -18,10 +18,10 @@ type ContainerSnapshotSpec struct {
 	// Image is the snapshot image, registry host and tag are optional
 	Image string `json:"image"`
 
-	// ImagePushSecret is a reference to a docker-registry secret in the same namespace to use for pushing checkout image,
-	// same as an ImagePullSecret.
+	// ImagePushSecrets are references to docker-registry secret in the same namespace to use for pushing checkout image,
+	// same as an ImagePullSecrets.
 	// More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod
-	ImagePushSecret v1.LocalObjectReference `json:"imagePushSecret"`
+	ImagePushSecrets []v1.LocalObjectReference `json:"imagePushSecrets"`
 }
 
 // ContainerSnapshotStatus defines the observed state of ContainerSnapshot

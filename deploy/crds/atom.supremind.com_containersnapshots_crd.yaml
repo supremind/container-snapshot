@@ -56,16 +56,20 @@ spec:
               description: Image is the snapshot image, registry host and tag are
                 optional
               type: string
-            imagePushSecret:
-              description: 'ImagePushSecret is a reference to a docker-registry secret
+            imagePushSecrets:
+              description: 'ImagePushSecrets are references to docker-registry secret
                 in the same namespace to use for pushing checkout image, same as an
-                ImagePullSecret. More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod'
-              properties:
-                name:
-                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    TODO: Add other useful fields. apiVersion, kind, uid?'
-                  type: string
-              type: object
+                ImagePullSecrets. More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod'
+              items:
+                description: LocalObjectReference contains enough information to let
+                  you locate the referenced object inside the same namespace.
+                properties:
+                  name:
+                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?'
+                    type: string
+                type: object
+              type: array
             podName:
               description: PodName+ContainerName is the name of the running container
                 going to have a snapshot
@@ -73,7 +77,7 @@ spec:
           required:
           - containerName
           - image
-          - imagePushSecret
+          - imagePushSecrets
           - podName
           type: object
         status:
