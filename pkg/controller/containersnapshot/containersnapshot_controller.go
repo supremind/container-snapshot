@@ -4,6 +4,7 @@ import (
 	"context"
 	stderr "errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apiserver/pkg/storage/names"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -28,7 +30,7 @@ import (
 
 const (
 	labelKeyPrefix              = "container-snapshot.atom.supremind.com/"
-	imagePushSecretPath         = "/root/.docker"
+	imagePushSecretPath         = "/config"
 	dockerSocketPath            = "/var/run/docker.sock"
 	containerIDPrefix           = "docker://"
 	envKeyWorkerImage           = "WORKER_IMAGE"
@@ -341,7 +343,7 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 		labels[k] = v
 	}
 
-	return &corev1.Pod{
+	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: cr.Name + "-",
 			Namespace:    cr.Namespace,
@@ -362,7 +364,7 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 				// Command: []string{"sleep", "3600"},
 				VolumeMounts: []corev1.VolumeMount{
 					{
-						Name:      "image-push-secret",
+						Name:      "image-push-secrets",
 						MountPath: imagePushSecretPath,
 						ReadOnly:  true,
 					},
@@ -374,10 +376,10 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 			}},
 			Volumes: []corev1.Volume{
 				{
-					Name: "image-push-secret",
+					Name: "image-push-secrets",
 					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: cr.Spec.ImagePushSecret.Name,
+						Projected: &corev1.ProjectedVolumeSource{
+							DefaultMode: pointer.Int32Ptr(0600),
 						},
 					},
 				},
@@ -393,6 +395,28 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 			},
 		},
 	}
+
+	for _, sec := range cr.Spec.ImagePushSecrets {
+		name := names.SimpleNameGenerator.GenerateName("sec-")
+		pod.Spec.Volumes[0].VolumeSource.Projected.Sources = append(pod.Spec.Volumes[0].VolumeSource.Projected.Sources, corev1.VolumeProjection{
+			Secret: &corev1.SecretProjection{
+				LocalObjectReference: corev1.LocalObjectReference{Name: sec.Name},
+				Items: []corev1.KeyToPath{
+					{
+						Key:  corev1.DockerConfigKey,
+						Path: filepath.Join(name, corev1.DockerConfigKey),
+					},
+					{
+						Key:  corev1.DockerConfigJsonKey,
+						Path: filepath.Join(name, corev1.DockerConfigJsonKey),
+					},
+				},
+				Optional: pointer.BoolPtr(true),
+			},
+		})
+	}
+
+	return pod
 }
 
 func logger(cr *atomv1alpha1.ContainerSnapshot) logr.Logger {
