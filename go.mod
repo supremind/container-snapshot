@@ -3,11 +3,13 @@ module github.com/supremind/container-snapshot
 go 1.13
 
 require (
+	github.com/go-logr/logr v0.1.0
 	github.com/operator-framework/operator-sdk v0.17.1
 	github.com/spf13/pflag v1.0.5
 	k8s.io/api v0.17.4
 	k8s.io/apimachinery v0.17.4
 	k8s.io/client-go v12.0.0+incompatible
+	k8s.io/utils v0.0.0-20191114200735-6ca3b61696b6
 	sigs.k8s.io/controller-runtime v0.5.2
 )
 
