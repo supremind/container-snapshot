@@ -131,7 +131,8 @@ func (r *ReconcileContainerSnapshot) Reconcile(request reconcile.Request) (recon
 	}
 
 	if !instance.DeletionTimestamp.IsZero() {
-		return r.onDeletion(ctx, instance)
+		// do nothing on deletion
+		return reconcile.Result{}, nil
 	}
 
 	switch instance.Status.WorkerState {
@@ -274,20 +275,6 @@ func (r *ReconcileContainerSnapshot) onUpdate(ctx context.Context, cr *atomv1alp
 	cr.Status.WorkerState = state
 
 	return r.applyUpdate(ctx, cr)
-}
-
-func (r *ReconcileContainerSnapshot) onDeletion(ctx context.Context, cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
-	reqLogger := logger(cr)
-	reqLogger.Info("on snapshot deletion")
-
-	e := r.client.DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(cr.Namespace), client.MatchingLabels{
-		labelKeyPrefix + "snapshot": cr.Name,
-	})
-	if e != nil {
-		reqLogger.Error(e, "delete all worker pods on deleting snapshot")
-	}
-
-	return reconcile.Result{}, e
 }
 
 func (r *ReconcileContainerSnapshot) applyUpdate(ctx context.Context, cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
