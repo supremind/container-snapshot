@@ -349,6 +349,14 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 				Image: r.workerImage,
 				// todo
 				// Command: []string{"sleep", "3600"},
+				Env: []corev1.EnvVar{{
+					Name: "NAMESPACE",
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "metadata.namespace",
+						},
+					},
+				}},
 				VolumeMounts: []corev1.VolumeMount{
 					{
 						Name:      "image-push-secrets",

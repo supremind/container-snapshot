@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"time"
 
@@ -16,12 +17,13 @@ const (
 	defaultConfigRoot = "/config"
 	defaultTimeout    = 30 * time.Minute
 
-	envTimeout = "TIMEOUT"
+	envTimeout   = "TIMEOUT"
+	envNamespace = "NAMESPACE"
 )
 
-func main() {
-	log := logf.Log.WithName("container snapshot worker").WithValues("version", version.Version)
+var log = logf.Log.WithName("container snapshot worker").WithValues("version", version.Version)
 
+func main() {
 	go func() {
 		e := run()
 		if e != nil {
@@ -36,15 +38,23 @@ func main() {
 
 func run() error {
 	opt := &worker.SnapshotOptions{}
-	flag.StringVarP(&opt.Container, "container", "c", "", "docker if of the container going to take a snapshot")
-	flag.StringVarP(&opt.Image, "image", "i", "", "name of the snapshot image")
+	flag.StringVarP(&opt.Container, "container", "c", "", "required, docker name of the container going to take a snapshot")
+	flag.StringVarP(&opt.Image, "image", "i", "", "required, name of the snapshot image")
 	flag.StringVar(&opt.Author, "author", "", "snapshot author")
 	flag.StringVar(&opt.Comment, "comment", "", "comment")
 
 	var configRoot string
-	flag.StringVar(&configRoot, "config", defaultConfigRoot, "root path of docker config files")
-
+	var snapshot string
+	flag.StringVar(&configRoot, "config", defaultConfigRoot, "root path of docker config files, default is /config")
+	flag.StringVar(&snapshot, "snapshot", "", "required, snapshot name")
 	flag.Parse()
+
+	namespace := os.Getenv(envNamespace)
+	if opt.Container == "" || opt.Image == "" || snapshot == "" || namespace == "" {
+		return errors.New("invalid arguments")
+	}
+
+	log = log.WithValues("namespace", namespace, "snapshot", snapshot, "container", opt.Container, "image", opt.Image)
 
 	c, e := worker.NewDockerClient(configRoot)
 	if e != nil {
@@ -61,5 +71,20 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	return c.TakeSnapshot(ctx, opt)
+	e = c.TakeSnapshot(ctx, opt)
+	if e != nil {
+		log.Error(e, "take snapshot failed")
+		c, e := worker.NewController(namespace, snapshot)
+		if e != nil {
+			log.Error(e, "create snapshot controller")
+			return e
+		}
+
+		if e = c.UpdateCondition(ctx, snapshot, e); e != nil {
+			log.Error(e, "update snapshot condition")
+			return e
+		}
+	}
+
+	return e
 }

@@ -67,6 +67,7 @@ const (
 	SourcePodNotReady                            = "SourcePodNotReady"
 	DockerCommitFailed                           = "DockerCommitFailed"
 	DockerPushFailed                             = "DockerPushFailed"
+	InvalidImage                                 = "InvalidImage"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

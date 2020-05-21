@@ -19,28 +19,28 @@ func (e *Error) Unwrap() error {
 }
 
 var (
-	_errInvalidImage = errors.New("invlid image name")
-	_errCommit       = errors.New("container commit failed")
-	_errPush         = errors.New("image push failed")
+	ErrInvalidImage = errors.New("invlid image name")
+	ErrCommit       = errors.New("container commit failed")
+	ErrPush         = errors.New("image push failed")
 )
 
 func errInvalidImage(msg string) *Error {
 	return &Error{
 		msg:    msg,
-		reason: _errInvalidImage,
+		reason: ErrInvalidImage,
 	}
 }
 
 func errCommit(msg string) *Error {
 	return &Error{
 		msg:    msg,
-		reason: _errCommit,
+		reason: ErrCommit,
 	}
 }
 
 func errPush(msg string) *Error {
 	return &Error{
 		msg:    msg,
-		reason: _errPush,
+		reason: ErrPush,
 	}
 }
