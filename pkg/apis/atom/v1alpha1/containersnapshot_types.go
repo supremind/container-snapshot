@@ -54,19 +54,20 @@ type WorkerState string
 
 const (
 	WorkerCreated  WorkerState = "Created"
-	WorkerRunning              = "Running"
-	WorkerComplete             = "Complete"
-	WorkerFailed               = "Failed"
-	WorkerUnknown              = "Unknown"
+	WorkerRunning  WorkerState = "Running"
+	WorkerComplete WorkerState = "Complete"
+	WorkerFailed   WorkerState = "Failed"
+	WorkerUnknown  WorkerState = "Unknown"
 )
 
 // Conditions indicate errors occurred when creating or running the snapshot worker pod
 const (
 	SourcePodNotFound       status.ConditionType = "SourcePodNotFound"
-	SourceContainerNotFound                      = "SourceContainerNotFound"
-	SourcePodNotReady                            = "SourcePodNotReady"
-	DockerCommitFailed                           = "DockerCommitFailed"
-	DockerPushFailed                             = "DockerPushFailed"
+	SourceContainerNotFound status.ConditionType = "SourceContainerNotFound"
+	SourcePodNotReady       status.ConditionType = "SourcePodNotReady"
+	DockerCommitFailed      status.ConditionType = "DockerCommitFailed"
+	DockerPushFailed        status.ConditionType = "DockerPushFailed"
+	InvalidImage            status.ConditionType = "InvalidImage"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
