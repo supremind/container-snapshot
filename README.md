@@ -1,3 +1,3 @@
 # Container Snapshot Operator
 
-Take snapshots for running containers in kubernetes
+Take snapshots for containers running in kubernetes

@@ -1,0 +1,7 @@
+apiVersion: atom.supremind.com/v1alpha1
+kind: ContainerSnapshot
+metadata:
+  name: example-containersnapshot
+spec:
+  # Add fields here
+  size: 3
