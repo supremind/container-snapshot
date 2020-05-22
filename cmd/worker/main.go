@@ -78,11 +78,11 @@ func run() error {
 	if e != nil {
 		log.Error(e, "take snapshot failed")
 		if errors.Is(e, worker.ErrInvalidImage) {
-			e = writeTerminationLog(atomv1alpha1.InvalidImage)
+			e = writeTerminationLog(string(atomv1alpha1.InvalidImage))
 		} else if errors.Is(e, worker.ErrCommit) {
-			e = writeTerminationLog(atomv1alpha1.DockerCommitFailed)
+			e = writeTerminationLog(string(atomv1alpha1.DockerCommitFailed))
 		} else if errors.Is(e, worker.ErrPush) {
-			e = writeTerminationLog(atomv1alpha1.DockerPushFailed)
+			e = writeTerminationLog(string(atomv1alpha1.DockerPushFailed))
 		}
 		if e != nil {
 			log.Error(e, "write termination log failed")
