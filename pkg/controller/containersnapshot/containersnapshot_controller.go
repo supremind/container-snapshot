@@ -345,10 +345,10 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 			ServiceAccountName: r.workerServiceAccount,
 
 			Containers: []corev1.Container{{
-				Name:  "snapshot-worker",
-				Image: r.workerImage,
-				// todo
-				// Command: []string{"sleep", "3600"},
+				Name:    "snapshot-worker",
+				Image:   r.workerImage,
+				Command: []string{"container-snapshot-worker"},
+				Args:    []string{"--container", cr.Status.ContainerID, "--image", cr.Spec.Image, "--snapshot", cr.Name},
 				Env: []corev1.EnvVar{{
 					Name: "NAMESPACE",
 					ValueFrom: &corev1.EnvVarSource{
