@@ -33,4 +33,4 @@ push: push-operator push-worker
 
 all: push
 
-.PHONY: images 
+.PHONY: images operator worker push push-operator push-worker
