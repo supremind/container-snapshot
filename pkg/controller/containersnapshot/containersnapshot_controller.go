@@ -251,8 +251,15 @@ func (r *ReconcileContainerSnapshot) onUpdate(ctx context.Context, cr *atomv1alp
 	}
 
 	pod := pods.Items[0]
+	if len(pod.Spec.Containers) != 1 {
+		e := stderr.New("worker pod should have exactly one container")
+		reqLogger.Error(e, "incorrect worker pod")
+		return reconcile.Result{}, e
+	}
+
 	reqLogger = reqLogger.WithValues("pod name", pod.Name, "pod namespace", pod.Namespace)
 	var state atomv1alpha1.WorkerState
+	var cond *status.Condition
 
 	switch pod.Status.Phase {
 	case corev1.PodPending:
@@ -261,20 +268,31 @@ func (r *ReconcileContainerSnapshot) onUpdate(ctx context.Context, cr *atomv1alp
 		state = atomv1alpha1.WorkerRunning
 	case corev1.PodSucceeded:
 		state = atomv1alpha1.WorkerComplete
+		cond = parseTerminationLog(pod)
 	case corev1.PodFailed:
 		state = atomv1alpha1.WorkerFailed
+		cond = parseTerminationLog(pod)
 	default:
 		state = atomv1alpha1.WorkerUnknown
 	}
 
-	if cr.Status.WorkerState == state {
-		return reconcile.Result{}, nil
+	stale := false
+
+	if cr.Status.WorkerState != state {
+		stale = true
+		reqLogger.Info("update snapshot worker state", "from", cr.Status.WorkerState, "to", state)
+		cr.Status.WorkerState = state
+	}
+	if cond != nil {
+		stale = true
+		cr.Status.Conditions.SetCondition(*cond)
+		reqLogger.Info("update snapshot condition", "type", cond.Type, "status", cond.Status)
+	}
+	if stale {
+		return r.applyUpdate(ctx, cr)
 	}
 
-	reqLogger.Info("update snapshot worker state", "from", cr.Status.WorkerState, "to", state)
-	cr.Status.WorkerState = state
-
-	return r.applyUpdate(ctx, cr)
+	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileContainerSnapshot) applyUpdate(ctx context.Context, cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
@@ -416,4 +434,22 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 
 func logger(cr *atomv1alpha1.ContainerSnapshot) logr.Logger {
 	return log.WithValues("snapshot name", cr.Name, "snapshot namespace", cr.Namespace)
+}
+
+// check if termination log of the worker is a ConditionType
+func parseTerminationLog(pod corev1.Pod) *status.Condition {
+	if len(pod.Status.ContainerStatuses) == 1 {
+		if term := pod.Status.ContainerStatuses[0].LastTerminationState.Terminated; term != nil {
+			switch typ := status.ConditionType(term.Message); typ {
+			case atomv1alpha1.InvalidImage, atomv1alpha1.DockerCommitFailed, atomv1alpha1.DockerPushFailed:
+				return &status.Condition{
+					Type:               typ,
+					Status:             corev1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+				}
+			}
+		}
+	}
+
+	return nil
 }
