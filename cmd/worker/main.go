@@ -3,13 +3,16 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
 	flag "github.com/spf13/pflag"
+	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
 	"github.com/supremind/container-snapshot/pkg/worker"
 	"github.com/supremind/container-snapshot/version"
 	"github.com/supremind/pkg/shutdown"
+	corev1 "k8s.io/api/core/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -74,17 +77,28 @@ func run() error {
 	e = c.TakeSnapshot(ctx, opt)
 	if e != nil {
 		log.Error(e, "take snapshot failed")
-		c, e := worker.NewController(namespace, snapshot)
-		if e != nil {
-			log.Error(e, "create snapshot controller")
-			return e
+		if errors.Is(e, worker.ErrInvalidImage) {
+			e = writeTerminationLog(atomv1alpha1.InvalidImage)
+		} else if errors.Is(e, worker.ErrCommit) {
+			e = writeTerminationLog(atomv1alpha1.DockerCommitFailed)
+		} else if errors.Is(e, worker.ErrPush) {
+			e = writeTerminationLog(atomv1alpha1.DockerPushFailed)
 		}
-
-		if e = c.UpdateCondition(ctx, snapshot, e); e != nil {
-			log.Error(e, "update snapshot condition")
-			return e
+		if e != nil {
+			log.Error(e, "write termination log failed")
 		}
 	}
 
+	return e
+}
+
+func writeTerminationLog(msg string) error {
+	f, e := os.Create(corev1.TerminationMessagePathDefault)
+	if e != nil {
+		return fmt.Errorf("open ternination message file: %w", e)
+	}
+	defer f.Close()
+
+	_, e = f.WriteString(msg)
 	return e
 }
