@@ -6,6 +6,8 @@ require (
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/docker v17.12.1-ce+incompatible
 	github.com/go-logr/logr v0.1.0
+	github.com/onsi/ginkgo v1.12.2
+	github.com/onsi/gomega v1.10.1
 	github.com/operator-framework/operator-sdk v0.17.1
 	github.com/spf13/pflag v1.0.5
 	github.com/supremind/pkg v0.1.0

@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/supremind/container-snapshot/pkg/apis"
+	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
 	"github.com/supremind/container-snapshot/pkg/controller"
 	"github.com/supremind/container-snapshot/version"
 
@@ -24,7 +25,9 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/metrics"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -122,6 +125,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	addIndexers(mgr)
+
 	// Setup all Controllers
 	if err := controller.AddToManager(mgr); err != nil {
 		log.Error(err, "")
@@ -208,4 +213,28 @@ func serveCRMetrics(cfg *rest.Config, operatorNs string) error {
 		return err
 	}
 	return nil
+}
+
+func addIndexers(mgr manager.Manager) {
+	mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "metadata.ownerReferences.name", func(o kruntime.Object) []string {
+		var names []string
+		for _, owner := range o.(*atomv1alpha1.ContainerSnapshot).OwnerReferences {
+			names = append(names, owner.Name)
+		}
+		return names
+	})
+	mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "metadata.ownerReferences.kind", func(o kruntime.Object) []string {
+		var kinds []string
+		for _, owner := range o.(*atomv1alpha1.ContainerSnapshot).OwnerReferences {
+			kinds = append(kinds, owner.Kind)
+		}
+		return kinds
+	})
+	mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "metadata.ownerReferences.apiVersion", func(o kruntime.Object) []string {
+		var versions []string
+		for _, owner := range o.(*atomv1alpha1.ContainerSnapshot).OwnerReferences {
+			versions = append(versions, owner.APIVersion)
+		}
+		return versions
+	})
 }

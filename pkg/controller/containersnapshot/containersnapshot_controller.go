@@ -43,6 +43,8 @@ var (
 	errSourcePodNotFound       = stderr.New("can not find source pod")
 	errSourceContainerNotFound = stderr.New("can not find source container")
 	errSourcePodNotReady       = stderr.New("source pod is not ready")
+	errWorkerPodNotFound       = stderr.New("can not find worker pod")
+	errTooManyWorkerPods       = stderr.New("find more than one worker pods")
 )
 
 var log = logf.Log.WithName("container snapshot operator")
@@ -179,6 +181,9 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 			})
 		}
 
+		stale = true
+		cr.Status.WorkerState = atomv1alpha1.WorkerFailed
+
 		return reconcile.Result{}, e
 	}
 
@@ -186,29 +191,28 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 	cr.Status.NodeName = nodeName
 	cr.Status.ContainerID = containerID
 
-	// Define a new Pod object
-	pod := r.newWorkerPod(cr)
-	// Set ContainerSnapshot instance as the owner and controller
-	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
-		return reconcile.Result{}, err
+	// Check if this Pod already exists
+	pod, e := r.getWorkerPod(ctx, types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace})
+	if !errors.IsNotFound(e) && !stderr.Is(e, errWorkerPodNotFound) {
+		reqLogger.Info("pod already exists, delete it")
+		if e := r.client.Delete(ctx, pod); e != nil {
+			reqLogger.Error(e, "delete stale worker pod on creation")
+			return reconcile.Result{}, e
+		}
 	}
 
+	// Define a new Pod object
+	pod = r.newWorkerPod(cr)
 	reqLogger = reqLogger.WithValues("pod namespace", pod.Namespace, "pod name", pod.Name)
 
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err := r.client.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && !errors.IsNotFound(err) {
-		return reconcile.Result{}, err
-	}
-	if !errors.IsNotFound(err) {
-		reqLogger.Info("pod already exists")
-		// update worker state if necessary
-		return r.onUpdate(ctx, cr)
+	// Set ContainerSnapshot instance as the owner and controller
+	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
+		reqLogger.Error(e, "set controller reference for worker pod")
+		return reconcile.Result{Requeue: true}, nil
 	}
 
 	reqLogger.Info("Creating a new Pod")
-	err = r.client.Create(ctx, pod)
+	err := r.client.Create(ctx, pod)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -223,37 +227,8 @@ func (r *ReconcileContainerSnapshot) onUpdate(ctx context.Context, cr *atomv1alp
 	reqLogger := logger(cr)
 	reqLogger.Info("on snapshot updating")
 
-	pods := corev1.PodList{}
-	e := r.client.List(ctx, &pods, client.InNamespace(cr.Namespace), client.MatchingLabels{
-		labelKeyPrefix + "snapshot": cr.Name,
-	})
+	pod, e := r.getWorkerPod(ctx, types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace})
 	if e != nil {
-		reqLogger.Error(e, "list snapshot worker pod failed")
-		return reconcile.Result{}, e
-	}
-	if len(pods.Items) != 1 {
-		e := stderr.New("there should be exactly 1 snapshot worker pod")
-		reqLogger.Error(e, "list snapshot worker pods", "got", len(pods.Items))
-
-		if len(pods.Items) == 0 {
-			// requeue
-			return reconcile.Result{}, e
-		}
-
-		// remove additional pods
-		// fixme: is there any conccurrency problem?
-		for _, pod := range pods.Items[1:] {
-			e := r.client.Delete(ctx, &pod)
-			if e != nil {
-				reqLogger.Error(e, "deleting additional snapshot worker pod", "pod name", pod.Name, "pod namespace", pod.Namespace)
-			}
-		}
-	}
-
-	pod := pods.Items[0]
-	if len(pod.Spec.Containers) != 1 {
-		e := stderr.New("worker pod should have exactly one container")
-		reqLogger.Error(e, "incorrect worker pod")
 		return reconcile.Result{}, e
 	}
 
@@ -268,10 +243,10 @@ func (r *ReconcileContainerSnapshot) onUpdate(ctx context.Context, cr *atomv1alp
 		state = atomv1alpha1.WorkerRunning
 	case corev1.PodSucceeded:
 		state = atomv1alpha1.WorkerComplete
-		cond = parseTerminationLog(pod)
+		cond = parseTerminationState(pod)
 	case corev1.PodFailed:
 		state = atomv1alpha1.WorkerFailed
-		cond = parseTerminationLog(pod)
+		cond = parseTerminationState(pod)
 	default:
 		state = atomv1alpha1.WorkerUnknown
 	}
@@ -296,7 +271,7 @@ func (r *ReconcileContainerSnapshot) onUpdate(ctx context.Context, cr *atomv1alp
 }
 
 func (r *ReconcileContainerSnapshot) applyUpdate(ctx context.Context, cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
-	e := r.client.Status().Patch(ctx, cr, client.Apply)
+	e := r.client.Status().Update(ctx, cr)
 	if e != nil {
 		logger(cr).Error(e, "update snapshot worker state")
 	}
@@ -432,20 +407,41 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 	return pod
 }
 
+func (r *ReconcileContainerSnapshot) getWorkerPod(ctx context.Context, snpKey types.NamespacedName) (*corev1.Pod, error) {
+	var pods corev1.PodList
+	e := r.client.List(ctx, &pods,
+		client.InNamespace(snpKey.Namespace),
+		client.MatchingField("metadata.owners.name", snpKey.Name),
+		client.MatchingField("metadata.owners.apiVersion", atomv1alpha1.SchemeGroupVersion.String()),
+		client.MatchingField("metadata.owners.kind", "ContainerSnapshot"),
+	)
+	if e != nil {
+		return nil, e
+	}
+	if len(pods.Items) == 0 {
+		return nil, errWorkerPodNotFound
+	}
+	if len(pods.Items) > 1 {
+		return nil, errTooManyWorkerPods
+	}
+
+	return &pods.Items[0], nil
+}
+
 func logger(cr *atomv1alpha1.ContainerSnapshot) logr.Logger {
 	return log.WithValues("snapshot name", cr.Name, "snapshot namespace", cr.Namespace)
 }
 
-// check if termination log of the worker is a ConditionType
-func parseTerminationLog(pod corev1.Pod) *status.Condition {
+func parseTerminationState(pod *corev1.Pod) *status.Condition {
 	if len(pod.Status.ContainerStatuses) == 1 {
 		if term := pod.Status.ContainerStatuses[0].LastTerminationState.Terminated; term != nil {
-			switch typ := status.ConditionType(term.Message); typ {
+			switch reason := status.ConditionType(term.Reason); reason {
 			case atomv1alpha1.InvalidImage, atomv1alpha1.DockerCommitFailed, atomv1alpha1.DockerPushFailed:
 				return &status.Condition{
-					Type:               typ,
+					Type:               reason,
 					Status:             corev1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
+					Message:            term.Message,
+					LastTransitionTime: term.FinishedAt,
 				}
 			}
 		}
