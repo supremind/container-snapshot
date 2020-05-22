@@ -80,7 +80,7 @@ func (c *Controller) UpdateCondition(ctx context.Context, snapshot string, err e
 	}
 
 	if stale {
-		return c.client.Patch(ctx, snp, client.Apply)
+		return c.client.Status().Patch(ctx, snp, client.Apply)
 	}
 	return nil
 }
