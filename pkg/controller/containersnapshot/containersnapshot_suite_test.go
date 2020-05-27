@@ -237,7 +237,7 @@ var _ = Describe("snapshot operator", func() {
 
 		// skip it, fake client knows nothing about delete propagation
 		PIt("should delete the worker pod", func() {
-			Eventually(func() error { _, e := getWorkerPod(ctx, re.client, snpKey); return e }, 10*time.Second).Should(HaveOccurred())
+			Eventually(func() error { _, e := getWorkerPod(ctx, re.client, snpKey); return e }).Should(HaveOccurred())
 		})
 	})
 })
