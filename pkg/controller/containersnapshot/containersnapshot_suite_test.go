@@ -10,7 +10,10 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -101,20 +104,25 @@ var _ = Describe("snapshot operator", func() {
 		re.scheme = scheme.Scheme
 		re.scheme.AddKnownTypes(atomv1alpha1.SchemeGroupVersion, simpleSnapshot)
 		// Create a fake client to mock API calls.
-		re.client = fake.NewFakeClient()
+		re.client = &indexFakeClient{fake.NewFakeClientWithScheme(re.scheme)}
 	})
 
 	Context("creating snapshot", func() {
+		var uid types.UID
 		JustBeforeEach(func() {
 			Expect(re.client.Create(ctx, sourcePod)).Should(Succeed())
 			Expect(re.client.Create(ctx, simpleSnapshot)).Should(Succeed())
+
+			snp, e := getSnapshot(ctx, re.client, snpKey)
+			Expect(e).Should(Succeed())
+			uid = snp.UID
 		})
 
 		Context("for running source pod", func() {
 			It("should succeed, and create a worker pod", func() {
 				Expect(re.Reconcile(reconcile.Request{NamespacedName: snpKey})).Should(Equal(reconcile.Result{}))
 				Expect(getWorkerState(ctx, re.client, snpKey)).Should(Equal(atomv1alpha1.WorkerCreated))
-				out, e := getWorkerPod(ctx, re.client, snpKey)
+				out, e := re.getWorkerPod(ctx, namespace, uid)
 
 				Expect(e).Should(BeNil())
 				Expect(out).ShouldNot(BeNil())
@@ -147,7 +155,7 @@ var _ = Describe("snapshot operator", func() {
 				Expect(getWorkerState(ctx, re.client, snpKey)).Should(Equal(atomv1alpha1.WorkerFailed))
 
 				Consistently(func() error {
-					_, e := getWorkerPod(ctx, re.client, snpKey)
+					_, e := re.getWorkerPod(ctx, namespace, uid)
 					return e
 				}()).Should(HaveOccurred())
 			})
@@ -162,8 +170,9 @@ var _ = Describe("snapshot operator", func() {
 			Expect(re.client.Create(ctx, simpleSnapshot)).Should(Succeed())
 			Expect(re.Reconcile(reconcile.Request{NamespacedName: snpKey})).Should(Equal(reconcile.Result{}))
 
-			var e error
-			worker, e = getWorkerPod(ctx, re.client, snpKey)
+			snp, e := getSnapshot(ctx, re.client, snpKey)
+			Expect(e).Should(Succeed())
+			worker, e = re.getWorkerPod(ctx, namespace, snp.UID)
 			Expect(e).Should(Succeed())
 		})
 
@@ -219,14 +228,19 @@ var _ = Describe("snapshot operator", func() {
 	})
 
 	Context("deleting snapshot", func() {
+		var uid types.UID
 		BeforeEach(func() {
 			Expect(re.client.Create(ctx, sourcePod)).Should(Succeed())
 			Expect(re.client.Create(ctx, simpleSnapshot)).Should(Succeed())
 			Expect(re.Reconcile(reconcile.Request{NamespacedName: snpKey})).Should(Equal(reconcile.Result{}))
+
+			snp, e := getSnapshot(ctx, re.client, snpKey)
+			Expect(e).Should(Succeed())
+			uid = snp.UID
 		})
 
 		JustBeforeEach(func() {
-			Eventually(func() error { _, e := getWorkerPod(ctx, re.client, snpKey); return e }).Should(Succeed())
+			Eventually(func() error { _, e := re.getWorkerPod(ctx, namespace, uid); return e }).Should(Succeed())
 			Expect(re.client.Delete(ctx, simpleSnapshot, client.PropagationPolicy(metav1.DeletePropagationForeground))).Should(Succeed())
 			Expect(re.Reconcile(reconcile.Request{NamespacedName: snpKey})).Should(Equal(reconcile.Result{}))
 		})
@@ -237,7 +251,7 @@ var _ = Describe("snapshot operator", func() {
 
 		// skip it, fake client knows nothing about delete propagation
 		PIt("should delete the worker pod", func() {
-			Eventually(func() error { _, e := getWorkerPod(ctx, re.client, snpKey); return e }).Should(HaveOccurred())
+			Eventually(func() error { _, e := re.getWorkerPod(ctx, namespace, uid); return e }).Should(HaveOccurred())
 		})
 	})
 })
@@ -260,21 +274,48 @@ func getWorkerState(ctx context.Context, c client.Client, key types.NamespacedNa
 	return snp.Status.WorkerState, nil
 }
 
-// fake client can not list objects by labels or indexes
-func getWorkerPod(ctx context.Context, c client.Client, key types.NamespacedName) (*corev1.Pod, error) {
-	var pods corev1.PodList
-	e := c.List(ctx, &pods, client.InNamespace(key.Namespace))
+// fake client does not index or fillter objects by owner references, make it do
+type indexFakeClient struct {
+	client.Client
+}
+
+func (c *indexFakeClient) List(ctx context.Context, list runtime.Object, opts ...client.ListOption) error {
+	e := c.Client.List(ctx, list, opts...)
 	if e != nil {
-		return nil, e
+		return e
 	}
 
-	for _, pod := range pods.Items {
-		for _, owner := range pod.OwnerReferences {
-			if owner.Name == key.Name {
-				return &pod, nil
+	listOpts := client.ListOptions{}
+	listOpts.ApplyOptions(opts)
+	if listOpts.FieldSelector == nil || listOpts.FieldSelector.Empty() {
+		return nil
+	}
+
+	objs, e := apimeta.ExtractList(list)
+	if e != nil {
+		return e
+	}
+
+	out := make([]runtime.Object, 0)
+	for _, obj := range objs {
+		meta, e := apimeta.Accessor(obj)
+		if e != nil {
+			continue
+		}
+
+		for _, owner := range meta.GetOwnerReferences() {
+			if listOpts.FieldSelector.Matches(fields.Set{
+				"metadata.ownerReferences.uid": string(owner.UID),
+			}) {
+				out = append(out, obj)
+				break
 			}
 		}
 	}
 
-	return nil, errWorkerPodNotFound
+	if len(out) == 0 {
+		return errWorkerPodNotFound
+	}
+
+	return apimeta.SetList(list, out)
 }

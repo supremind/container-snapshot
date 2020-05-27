@@ -152,6 +152,17 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 	reqLogger := logger(cr)
 	reqLogger.Info("on snapshot creation")
 
+	// Check if this Pod already exists
+	_, e := r.getWorkerPod(ctx, cr.Namespace, cr.UID)
+	if e == nil {
+		reqLogger.Info("worker pod already exists, update the snapshot if necessary")
+		return r.onUpdate(ctx, cr)
+	}
+	if !errors.IsNotFound(e) && !stderr.Is(e, errWorkerPodNotFound) {
+		reqLogger.Error(e, "check if worker pod already exists before creating new one")
+		return reconcile.Result{}, e
+	}
+
 	stale := false
 	defer func() {
 		if stale {
@@ -191,18 +202,8 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 	cr.Status.NodeName = nodeName
 	cr.Status.ContainerID = containerID
 
-	// Check if this Pod already exists
-	pod, e := r.getWorkerPod(ctx, cr.Namespace, cr.UID)
-	if !errors.IsNotFound(e) && !stderr.Is(e, errWorkerPodNotFound) {
-		reqLogger.Info("pod already exists, delete it")
-		if e := r.client.Delete(ctx, pod); e != nil {
-			reqLogger.Error(e, "delete stale worker pod on creation")
-			return reconcile.Result{}, e
-		}
-	}
-
 	// Define a new Pod object
-	pod = r.newWorkerPod(cr)
+	pod := r.newWorkerPod(cr)
 	reqLogger = reqLogger.WithValues("pod namespace", pod.Namespace, "pod name", pod.Name)
 
 	// Set ContainerSnapshot instance as the owner and controller
