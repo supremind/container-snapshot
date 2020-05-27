@@ -192,7 +192,7 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 	cr.Status.ContainerID = containerID
 
 	// Check if this Pod already exists
-	pod, e := r.getWorkerPod(ctx, types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace})
+	pod, e := r.getWorkerPod(ctx, cr.Namespace, cr.UID)
 	if !errors.IsNotFound(e) && !stderr.Is(e, errWorkerPodNotFound) {
 		reqLogger.Info("pod already exists, delete it")
 		if e := r.client.Delete(ctx, pod); e != nil {
@@ -227,7 +227,7 @@ func (r *ReconcileContainerSnapshot) onUpdate(ctx context.Context, cr *atomv1alp
 	reqLogger := logger(cr)
 	reqLogger.Info("on snapshot updating")
 
-	pod, e := r.getWorkerPod(ctx, types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace})
+	pod, e := r.getWorkerPod(ctx, cr.Namespace, cr.UID)
 	if e != nil {
 		return reconcile.Result{}, e
 	}
@@ -407,13 +407,11 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 	return pod
 }
 
-func (r *ReconcileContainerSnapshot) getWorkerPod(ctx context.Context, snpKey types.NamespacedName) (*corev1.Pod, error) {
+func (r *ReconcileContainerSnapshot) getWorkerPod(ctx context.Context, ns string, uid types.UID) (*corev1.Pod, error) {
 	var pods corev1.PodList
 	e := r.client.List(ctx, &pods,
-		client.InNamespace(snpKey.Namespace),
-		client.MatchingField("metadata.owners.name", snpKey.Name),
-		client.MatchingField("metadata.owners.apiVersion", atomv1alpha1.SchemeGroupVersion.String()),
-		client.MatchingField("metadata.owners.kind", "ContainerSnapshot"),
+		client.InNamespace(ns),
+		client.MatchingField("metadata.ownerReferences.uid", string(uid)),
 	)
 	if e != nil {
 		return nil, e

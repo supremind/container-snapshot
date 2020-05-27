@@ -216,25 +216,11 @@ func serveCRMetrics(cfg *rest.Config, operatorNs string) error {
 }
 
 func addIndexers(mgr manager.Manager) {
-	mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "metadata.ownerReferences.name", func(o kruntime.Object) []string {
-		var names []string
+	mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "metadata.ownerReferences.uid", func(o kruntime.Object) []string {
+		var uids []string
 		for _, owner := range o.(*atomv1alpha1.ContainerSnapshot).OwnerReferences {
-			names = append(names, owner.Name)
+			uids = append(uids, string(owner.UID))
 		}
-		return names
-	})
-	mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "metadata.ownerReferences.kind", func(o kruntime.Object) []string {
-		var kinds []string
-		for _, owner := range o.(*atomv1alpha1.ContainerSnapshot).OwnerReferences {
-			kinds = append(kinds, owner.Kind)
-		}
-		return kinds
-	})
-	mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "metadata.ownerReferences.apiVersion", func(o kruntime.Object) []string {
-		var versions []string
-		for _, owner := range o.(*atomv1alpha1.ContainerSnapshot).OwnerReferences {
-			versions = append(versions, owner.APIVersion)
-		}
-		return versions
+		return uids
 	})
 }

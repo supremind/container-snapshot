@@ -67,13 +67,13 @@ var _ = Describe("snapshot operator", func() {
 			},
 			Status: corev1.PodStatus{
 				Phase:     corev1.PodRunning,
-				StartTime: &metav1.Time{now.Add(-1 * time.Minute)},
+				StartTime: &metav1.Time{Time: now.Add(-1 * time.Minute)},
 				ContainerStatuses: []corev1.ContainerStatus{
 					{
 						Name: "source-container",
 						State: corev1.ContainerState{
 							Running: &corev1.ContainerStateRunning{
-								StartedAt: metav1.Time{now.Add(-1 * time.Minute)},
+								StartedAt: metav1.Time{Time: now.Add(-1 * time.Minute)},
 							},
 						},
 						Ready:       true,
@@ -85,7 +85,7 @@ var _ = Describe("snapshot operator", func() {
 						Name: "sidecar-container",
 						State: corev1.ContainerState{
 							Running: &corev1.ContainerStateRunning{
-								StartedAt: metav1.Time{now.Add(-1 * time.Minute)},
+								StartedAt: metav1.Time{Time: now.Add(-1 * time.Minute)},
 							},
 						},
 						Ready:       true,
@@ -202,7 +202,7 @@ var _ = Describe("snapshot operator", func() {
 							ExitCode:   1,
 							Reason:     string(atomv1alpha1.DockerCommitFailed),
 							Message:    "docker commit failed: blah, blah...",
-							FinishedAt: metav1.Time{now.Add(1 * time.Minute)},
+							FinishedAt: metav1.Time{Time: now.Add(1 * time.Minute)},
 						},
 					},
 				}}
