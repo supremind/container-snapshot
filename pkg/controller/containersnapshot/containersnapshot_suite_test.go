@@ -6,6 +6,7 @@ import (
 	"time"
 
 	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
+	"github.com/supremind/container-snapshot/pkg/constants"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -208,8 +209,8 @@ var _ = Describe("snapshot operator", func() {
 				worker.Status.ContainerStatuses = []corev1.ContainerStatus{{
 					LastTerminationState: corev1.ContainerState{
 						Terminated: &corev1.ContainerStateTerminated{
-							ExitCode:   1,
-							Reason:     string(atomv1alpha1.DockerCommitFailed),
+							ExitCode:   constants.ExitCodeDockerCommit,
+							Reason:     "Error",
 							Message:    "docker commit failed: blah, blah...",
 							FinishedAt: metav1.Time{Time: now.Add(1 * time.Minute)},
 						},
@@ -311,10 +312,6 @@ func (c *indexFakeClient) List(ctx context.Context, list runtime.Object, opts ..
 				break
 			}
 		}
-	}
-
-	if len(out) == 0 {
-		return errWorkerPodNotFound
 	}
 
 	return apimeta.SetList(list, out)
