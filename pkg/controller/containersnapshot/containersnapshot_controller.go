@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
+	"github.com/supremind/container-snapshot/pkg/constants"
+
 	"github.com/go-logr/logr"
 	"github.com/operator-framework/operator-sdk/pkg/status"
-	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -434,14 +436,24 @@ func logger(cr *atomv1alpha1.ContainerSnapshot) logr.Logger {
 func parseTerminationState(pod *corev1.Pod) *status.Condition {
 	if len(pod.Status.ContainerStatuses) == 1 {
 		if term := pod.Status.ContainerStatuses[0].LastTerminationState.Terminated; term != nil {
-			switch reason := status.ConditionType(term.Reason); reason {
-			case atomv1alpha1.InvalidImage, atomv1alpha1.DockerCommitFailed, atomv1alpha1.DockerPushFailed:
-				return &status.Condition{
-					Type:               reason,
-					Status:             corev1.ConditionTrue,
-					Message:            term.Message,
-					LastTransitionTime: term.FinishedAt,
-				}
+			var typ status.ConditionType
+			switch term.ExitCode {
+			case constants.ExitCodeInvalidImage:
+				typ = atomv1alpha1.InvalidImage
+			case constants.ExitCodeDockerCommit:
+				typ = atomv1alpha1.DockerCommitFailed
+			case constants.ExitCodeDockerPush:
+				typ = atomv1alpha1.DockerPushFailed
+			default:
+				return nil
+			}
+
+			return &status.Condition{
+				Type:               typ,
+				Status:             corev1.ConditionTrue,
+				Message:            term.Message,
+				Reason:             status.ConditionReason(term.Reason),
+				LastTransitionTime: term.FinishedAt,
 			}
 		}
 	}

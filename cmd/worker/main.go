@@ -7,8 +7,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/docker/docker/client"
 	flag "github.com/spf13/pflag"
-	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
+	"github.com/supremind/container-snapshot/pkg/constants"
 	"github.com/supremind/container-snapshot/pkg/worker"
 	"github.com/supremind/container-snapshot/version"
 	"github.com/supremind/pkg/shutdown"
@@ -57,9 +58,14 @@ func run() error {
 		return errors.New("invalid arguments")
 	}
 
+	cli, e := client.NewEnvClient()
+	if e != nil {
+		return fmt.Errorf("create docker client: %w", e)
+	}
+
 	log = log.WithValues("namespace", namespace, "snapshot", snapshot, "container", opt.Container, "image", opt.Image)
 
-	c, e := worker.NewDockerClient(configRoot)
+	c, e := worker.New(cli, configRoot)
 	if e != nil {
 		return e
 	}
@@ -77,28 +83,32 @@ func run() error {
 	e = c.TakeSnapshot(ctx, opt)
 	if e != nil {
 		log.Error(e, "take snapshot failed")
-		if errors.Is(e, worker.ErrInvalidImage) {
-			e = writeTerminationLog(string(atomv1alpha1.InvalidImage))
-		} else if errors.Is(e, worker.ErrCommit) {
-			e = writeTerminationLog(string(atomv1alpha1.DockerCommitFailed))
-		} else if errors.Is(e, worker.ErrPush) {
-			e = writeTerminationLog(string(atomv1alpha1.DockerPushFailed))
-		}
-		if e != nil {
+
+		if e := writeTerminationLog(e); e != nil {
 			log.Error(e, "write termination log failed")
 		}
+
+		var code int32 = 127
+		if errors.Is(e, worker.ErrInvalidImage) {
+			code = constants.ExitCodeInvalidImage
+		} else if errors.Is(e, worker.ErrCommit) {
+			code = constants.ExitCodeDockerCommit
+		} else if errors.Is(e, worker.ErrPush) {
+			code = constants.ExitCodeDockerPush
+		}
+		os.Exit(int(code))
 	}
 
 	return e
 }
 
-func writeTerminationLog(msg string) error {
+func writeTerminationLog(e error) error {
 	f, e := os.Create(corev1.TerminationMessagePathDefault)
 	if e != nil {
 		return fmt.Errorf("open ternination message file: %w", e)
 	}
 	defer f.Close()
 
-	_, e = f.WriteString(msg)
+	_, e = f.WriteString(e.Error())
 	return e
 }

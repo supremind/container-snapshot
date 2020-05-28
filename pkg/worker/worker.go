@@ -6,14 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/term"
 	"github.com/supremind/container-snapshot/version"
@@ -23,23 +21,24 @@ import (
 
 var log = logf.Log.WithName("container snapshot worker").WithValues("version", version.Version)
 
-type DockerClient struct {
-	client client.CommonAPIClient
+type Worker struct {
+	client DockerClient
 	auths  mergedDockerAuth
 }
 
-func NewDockerClient(configRoot string) (*DockerClient, error) {
-	auths, e := loadDockerAuths(configRoot)
+// DockerClient is a subset of docker CommonAPIClient, to make the worker interface simpler
+type DockerClient interface {
+	ContainerCommit(ctx context.Context, container string, options types.ContainerCommitOptions) (types.IDResponse, error)
+	ImagePush(ctx context.Context, ref string, options types.ImagePushOptions) (io.ReadCloser, error)
+}
+
+func New(cli DockerClient, authpath string) (*Worker, error) {
+	auths, e := loadDockerAuths(authpath)
 	if e != nil {
 		return nil, fmt.Errorf("load docker auths: %w", e)
 	}
 
-	c, e := client.NewEnvClient()
-	if e != nil {
-		return nil, fmt.Errorf("creating docker client: %w", e)
-	}
-
-	return &DockerClient{client: c, auths: auths}, nil
+	return &Worker{client: cli, auths: auths}, nil
 }
 
 type SnapshotOptions struct {
@@ -51,7 +50,7 @@ type SnapshotOptions struct {
 	Comment   string `json:"comment,omitempty"`
 }
 
-func (c *DockerClient) TakeSnapshot(ctx context.Context, opt *SnapshotOptions) error {
+func (c *Worker) TakeSnapshot(ctx context.Context, opt *SnapshotOptions) error {
 	log = log.WithValues("container", opt.Container, "image", opt.Image, "author", opt.Author)
 	log.Info("taking snapshot")
 
@@ -92,10 +91,6 @@ func (c *DockerClient) TakeSnapshot(ctx context.Context, opt *SnapshotOptions) e
 			return "", io.EOF
 		},
 	})
-	defer func() {
-		io.Copy(ioutil.Discard, resp)
-		resp.Close()
-	}()
 	if e != nil {
 		log.Error(e, "image push failed")
 		return errPush(image)
