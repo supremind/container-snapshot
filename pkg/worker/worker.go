@@ -23,23 +23,18 @@ import (
 
 var log = logf.Log.WithName("container snapshot worker").WithValues("version", version.Version)
 
-type DockerClient struct {
+type Worker struct {
 	client client.CommonAPIClient
 	auths  mergedDockerAuth
 }
 
-func NewDockerClient(configRoot string) (*DockerClient, error) {
-	auths, e := loadDockerAuths(configRoot)
+func New(cli client.CommonAPIClient, authpath string) (*Worker, error) {
+	auths, e := loadDockerAuths(authpath)
 	if e != nil {
 		return nil, fmt.Errorf("load docker auths: %w", e)
 	}
 
-	c, e := client.NewEnvClient()
-	if e != nil {
-		return nil, fmt.Errorf("creating docker client: %w", e)
-	}
-
-	return &DockerClient{client: c, auths: auths}, nil
+	return &Worker{client: cli, auths: auths}, nil
 }
 
 type SnapshotOptions struct {
@@ -51,7 +46,7 @@ type SnapshotOptions struct {
 	Comment   string `json:"comment,omitempty"`
 }
 
-func (c *DockerClient) TakeSnapshot(ctx context.Context, opt *SnapshotOptions) error {
+func (c *Worker) TakeSnapshot(ctx context.Context, opt *SnapshotOptions) error {
 	log = log.WithValues("container", opt.Container, "image", opt.Image, "author", opt.Author)
 	log.Info("taking snapshot")
 

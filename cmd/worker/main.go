@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/docker/docker/client"
 	flag "github.com/spf13/pflag"
 	"github.com/supremind/container-snapshot/pkg/constants"
 	"github.com/supremind/container-snapshot/pkg/worker"
@@ -57,9 +58,14 @@ func run() error {
 		return errors.New("invalid arguments")
 	}
 
+	cli, e := client.NewEnvClient()
+	if e != nil {
+		return fmt.Errorf("create docker client: %w", e)
+	}
+
 	log = log.WithValues("namespace", namespace, "snapshot", snapshot, "container", opt.Container, "image", opt.Image)
 
-	c, e := worker.NewDockerClient(configRoot)
+	c, e := worker.New(cli, configRoot)
 	if e != nil {
 		return e
 	}
