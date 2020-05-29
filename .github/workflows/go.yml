@@ -1,4 +1,4 @@
-name: Go
+name: Container Snapshot
 
 on:
   push:
@@ -45,30 +45,38 @@ jobs:
           username: houz42
           # Password or personal access token used to log in to a Docker registry. If not set then no login will occur
           password: 033751eb-565f-423c-b045-bd092e47b470
-          # Server address of Docker registry. If not set then will default to Docker Hub
-          # registry: 
           # Docker repository to tag the image with
-          repository: supremind
+          repository: supremind/container-snapshot-operator
           # Comma-delimited list of tags. These will be added to the registry/repository to form the image's tags
-          # tags: latest
           # Automatically tags the built image with the git reference as per the readme
           tag_with_ref: true
           # Automatically tags the built image with the git short SHA as per the readme
-          # tag_with_sha: true
-          # Path to the build context
-          # path: # optional, default is .
           # Path to the Dockerfile (Default is '{path}/Dockerfile')
           dockerfile: ./build/Dockerfile
           # Sets the target stage to build
           target: release-operator
-          # Always attempt to pull a newer version of the image
-          # always_pull: # optional
-          # Comma-delimited list of build-time variables
-          # build_args: # optional
-          # Comma-delimited list of images to consider as cache sources
-          # cache_froms: # optional
-          # Comma-delimited list of labels to add to the built image
-          # labels: # optional
+          # Adds labels with git repository information to the built image
+          add_git_labels: true
+          # Whether to push the image
+          push: true
+
+      - name: Build container snapshot worker
+        uses: docker/build-push-action@v1.1.0
+        with:
+          # Username used to log in to a Docker registry. If not set then no login will occur
+          username: houz42
+          # Password or personal access token used to log in to a Docker registry. If not set then no login will occur
+          password: 033751eb-565f-423c-b045-bd092e47b470
+          # Docker repository to tag the image with
+          repository: supremind/container-snapshot-worker
+          # Comma-delimited list of tags. These will be added to the registry/repository to form the image's tags
+          # Automatically tags the built image with the git reference as per the readme
+          tag_with_ref: true
+          # Automatically tags the built image with the git short SHA as per the readme
+          # Path to the Dockerfile (Default is '{path}/Dockerfile')
+          dockerfile: ./build/Dockerfile
+          # Sets the target stage to build
+          target: release-worker
           # Adds labels with git repository information to the built image
           add_git_labels: true
           # Whether to push the image
