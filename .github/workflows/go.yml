@@ -28,13 +28,17 @@ jobs:
         go mod verify
 
     - name: Test
-      run: go test -v .
+      run: go test -v ./...
 
   build:
     name: build docker images
     runs-on: ubuntu-latest
     steps:
-      - name: build container snapshot operator
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+      - name: Build container snapshot operator
         uses: docker/build-push-action@v1.1.0
         with:
           # Username used to log in to a Docker registry. If not set then no login will occur
