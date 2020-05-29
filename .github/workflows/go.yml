@@ -33,6 +33,9 @@ jobs:
   build:
     name: build docker images
     runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: "1"
+
     steps:
 
       - name: Check out code into the Go module directory
