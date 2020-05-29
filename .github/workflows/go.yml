@@ -44,7 +44,7 @@ jobs:
           # Username used to log in to a Docker registry. If not set then no login will occur
           username: houz42
           # Password or personal access token used to log in to a Docker registry. If not set then no login will occur
-          password: ${{ secretes.IMAGE_PUSH_HOUZ }}
+          password: ${{ secrets.IMAGE_PUSH_HOUZ }}
           # Docker repository to tag the image with
           repository: supremind/container-snapshot-operator
           # Comma-delimited list of tags. These will be added to the registry/repository to form the image's tags
@@ -66,7 +66,7 @@ jobs:
           # Username used to log in to a Docker registry. If not set then no login will occur
           username: houz42
           # Password or personal access token used to log in to a Docker registry. If not set then no login will occur
-          password: ${{ secretes.IMAGE_PUSH_HOUZ }}
+          password: ${{ secrets.IMAGE_PUSH_HOUZ }}
           # Docker repository to tag the image with
           repository: supremind/container-snapshot-worker
           # Comma-delimited list of tags. These will be added to the registry/repository to form the image's tags
