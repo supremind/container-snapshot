@@ -33,6 +33,6 @@ spec:
             - name: WORKER_IMAGE
               value: supremind/container-snapshot-worker:latest
             - name: WORKER_IMAGE_PULL_SECRET
-              value: xxx
+              value: ""
             - name: WORKER_SERVICE_ACCOUNT
               value: container-snapshot-worker
