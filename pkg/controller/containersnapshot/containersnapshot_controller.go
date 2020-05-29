@@ -37,7 +37,6 @@ const (
 	containerIDPrefix           = "docker://"
 	envKeyWorkerImage           = "WORKER_IMAGE"
 	envKeyWorkerImagePullSecret = "WORKER_IMAGE_PULL_SECRET"
-	envKeyWorkerServiceAccount  = "WORKER_SERVICE_ACCOUNT"
 	requestTimeout              = 10 * time.Second
 )
 
@@ -64,7 +63,6 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:                mgr.GetScheme(),
 		workerImage:           os.Getenv(envKeyWorkerImage),
 		workerImagePullSecret: os.Getenv(envKeyWorkerImagePullSecret),
-		workerServiceAccount:  os.Getenv(envKeyWorkerServiceAccount),
 	}
 }
 
@@ -105,7 +103,6 @@ type ReconcileContainerSnapshot struct {
 	scheme                *runtime.Scheme
 	workerImage           string
 	workerImagePullSecret string
-	workerServiceAccount  string
 }
 
 // Reconcile reads that state of the cluster for a ContainerSnapshot object and makes changes based on the state read
@@ -336,9 +333,8 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 			ImagePullSecrets: []corev1.LocalObjectReference{{
 				Name: r.workerImagePullSecret,
 			}},
-			RestartPolicy:      corev1.RestartPolicyNever,
-			NodeName:           cr.Status.NodeName,
-			ServiceAccountName: r.workerServiceAccount,
+			RestartPolicy: corev1.RestartPolicyNever,
+			NodeName:      cr.Status.NodeName,
 
 			Containers: []corev1.Container{{
 				Name:    "snapshot-worker",

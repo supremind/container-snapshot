@@ -36,7 +36,6 @@ var _ = Describe("snapshot operator", func() {
 		re        = &ReconcileContainerSnapshot{
 			workerImage:           "worker-image:latest",
 			workerImagePullSecret: "worker-image-pull-secret",
-			workerServiceAccount:  "container-snapshot-worker",
 		}
 		simpleSnapshot *atomv1alpha1.ContainerSnapshot
 		sourcePod      *corev1.Pod
