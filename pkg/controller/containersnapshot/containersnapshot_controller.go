@@ -45,6 +45,7 @@ var (
 	errSourcePodNotFound       = stderr.New("can not find source pod")
 	errSourceContainerNotFound = stderr.New("can not find source container")
 	errSourcePodNotReady       = stderr.New("source pod is not ready")
+	errSourcePodFinished       = stderr.New("source pod finished")
 	errWorkerPodNotFound       = stderr.New("can not find worker pod")
 	errTooManyWorkerPods       = stderr.New("find more than one worker pods")
 )
@@ -190,7 +191,16 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 			})
 			cr.Status.WorkerState = atomv1alpha1.WorkerFailed
 			stale = true
+		} else if stderr.Is(e, errSourcePodFinished) {
+			cr.Status.Conditions.SetCondition(status.Condition{
+				Type:               atomv1alpha1.SourcePodFinishied,
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			})
+			cr.Status.WorkerState = atomv1alpha1.WorkerFailed
+			stale = true
 		} else if stderr.Is(e, errSourcePodNotReady) {
+			// will retry
 			stale = cr.Status.Conditions.SetCondition(status.Condition{
 				Type:               atomv1alpha1.SourcePodNotReady,
 				Status:             corev1.ConditionTrue,
@@ -298,8 +308,13 @@ func (r *ReconcileContainerSnapshot) getSourceContainer(ctx context.Context, cr 
 		return
 	}
 
-	if pod.Status.Phase != corev1.PodRunning {
+	switch pod.Status.Phase {
+	case corev1.PodPending, corev1.PodUnknown:
 		e = errSourcePodNotReady
+	case corev1.PodSucceeded, corev1.PodFailed:
+		e = errSourcePodFinished
+	}
+	if e != nil {
 		reqLogger.Error(e, "source pod should be running")
 		return
 	}
