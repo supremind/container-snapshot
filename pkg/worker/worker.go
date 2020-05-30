@@ -13,7 +13,6 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/jsonmessage"
-	"github.com/docker/docker/pkg/term"
 	"github.com/supremind/container-snapshot/version"
 	corev1 "k8s.io/api/core/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -74,36 +73,60 @@ func (c *Worker) TakeSnapshot(ctx context.Context, opt *SnapshotOptions) error {
 	}
 	log.WithValues("id", id.ID).Info("container committed")
 
-	auths := c.auths[reference.Domain(ref)]
+	for _, auth := range c.auths[reference.Domain(ref)] {
+		e = c.push(ctx, &auth, ref)
+		if e == nil {
+			goto succeed
+		}
+	}
+	e = c.push(ctx, nil, ref)
+	if e != nil {
+		log.Error(e, "push image")
+		return errPush(ref.Name())
+	}
+
+succeed:
+	log.Info("image push succeed")
+	return nil
+}
+
+func (c *Worker) push(ctx context.Context, auth *types.AuthConfig, ref reference.Reference) error {
 	image := reference.FamiliarString(ref)
-	authIdx := 0
+
+	var coded string
+	if auth != nil {
+		var e error
+		coded, e = formatAuth(*auth)
+		if e != nil {
+			return e
+		}
+	}
+
 	resp, e := c.client.ImagePush(ctx, image, types.ImagePushOptions{
-		// PrivilegeFunc may be called more than once to retry on authentication errors
-		PrivilegeFunc: func() (string, error) {
-			if authIdx < len(auths) {
-				authIdx++
-				auth, e := formatAuth(auths[authIdx])
-				if e != nil {
-					return "", e
-				}
-				return auth, nil
-			}
-			return "", io.EOF
-		},
+		RegistryAuth: coded,
 	})
 	if e != nil {
-		log.Error(e, "image push failed")
-		return errPush(image)
+		return e
 	}
 
-	fd, isTerm := term.GetFdInfo(resp)
-	if e := jsonmessage.DisplayJSONMessagesStream(resp, os.Stdout, fd, isTerm, nil); e != nil {
-		log.Error(e, "display push output")
-		return errPush("display push output")
-	}
-	log.Info("push complete")
+	return c.printPushMessage(resp)
+}
 
-	return nil
+func (c *Worker) printPushMessage(r io.ReadCloser) error {
+	dec := json.NewDecoder(r)
+	defer r.Close()
+
+	for {
+		var jm jsonmessage.JSONMessage
+		if e := dec.Decode(&jm); e != nil {
+			if e == io.EOF {
+				return nil
+			}
+			return e
+		}
+
+		log.Info(jm.ProgressMessage, "id", jm.ID, "status", jm.Status, "stream", jm.Stream, "from", jm.From, "error message", jm.ErrorMessage)
+	}
 }
 
 func formatAuth(auth types.AuthConfig) (string, error) {

@@ -65,6 +65,7 @@ const (
 	SourcePodNotFound       status.ConditionType = "SourcePodNotFound"
 	SourceContainerNotFound status.ConditionType = "SourceContainerNotFound"
 	SourcePodNotReady       status.ConditionType = "SourcePodNotReady"
+	SourcePodFinishied      status.ConditionType = "SourcePodFinished"
 	DockerCommitFailed      status.ConditionType = "DockerCommitFailed"
 	DockerPushFailed        status.ConditionType = "DockerPushFailed"
 	InvalidImage            status.ConditionType = "InvalidImage"

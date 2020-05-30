@@ -37,14 +37,15 @@ const (
 	containerIDPrefix           = "docker://"
 	envKeyWorkerImage           = "WORKER_IMAGE"
 	envKeyWorkerImagePullSecret = "WORKER_IMAGE_PULL_SECRET"
-	envKeyWorkerServiceAccount  = "WORKER_SERVICE_ACCOUNT"
 	requestTimeout              = 10 * time.Second
+	retryLater                  = 1 * time.Minute
 )
 
 var (
 	errSourcePodNotFound       = stderr.New("can not find source pod")
 	errSourceContainerNotFound = stderr.New("can not find source container")
 	errSourcePodNotReady       = stderr.New("source pod is not ready")
+	errSourcePodFinished       = stderr.New("source pod finished")
 	errWorkerPodNotFound       = stderr.New("can not find worker pod")
 	errTooManyWorkerPods       = stderr.New("find more than one worker pods")
 )
@@ -64,7 +65,6 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:                mgr.GetScheme(),
 		workerImage:           os.Getenv(envKeyWorkerImage),
 		workerImagePullSecret: os.Getenv(envKeyWorkerImagePullSecret),
-		workerServiceAccount:  os.Getenv(envKeyWorkerServiceAccount),
 	}
 }
 
@@ -105,7 +105,6 @@ type ReconcileContainerSnapshot struct {
 	scheme                *runtime.Scheme
 	workerImage           string
 	workerImagePullSecret string
-	workerServiceAccount  string
 }
 
 // Reconcile reads that state of the cluster for a ContainerSnapshot object and makes changes based on the state read
@@ -150,12 +149,12 @@ func (r *ReconcileContainerSnapshot) Reconcile(request reconcile.Request) (recon
 	}
 }
 
-func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1alpha1.ContainerSnapshot) (reconcile.Result, error) {
+func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1alpha1.ContainerSnapshot) (result reconcile.Result, e error) {
 	reqLogger := logger(cr)
 	reqLogger.Info("on snapshot creation")
 
 	// Check if this Pod already exists
-	_, e := r.getWorkerPod(ctx, cr.Namespace, cr.UID)
+	_, e = r.getWorkerPod(ctx, cr.Namespace, cr.UID)
 	if e == nil {
 		reqLogger.Info("worker pod already exists, update the snapshot if necessary")
 		return r.onUpdate(ctx, cr)
@@ -168,36 +167,49 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 	stale := false
 	defer func() {
 		if stale {
-			r.applyUpdate(ctx, cr)
+			_, e = r.applyUpdate(ctx, cr)
 		}
 	}()
 
 	nodeName, containerID, e := r.getSourceContainer(ctx, cr)
 	if e != nil {
+		reqLogger.Error(e, "inspect source container")
+
 		if stderr.Is(e, errSourcePodNotFound) {
-			stale = cr.Status.Conditions.SetCondition(status.Condition{
+			cr.Status.Conditions.SetCondition(status.Condition{
 				Type:               atomv1alpha1.SourcePodNotFound,
 				Status:             corev1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 			})
+			cr.Status.WorkerState = atomv1alpha1.WorkerFailed
+			stale = true
 		} else if stderr.Is(e, errSourceContainerNotFound) {
-			stale = cr.Status.Conditions.SetCondition(status.Condition{
+			cr.Status.Conditions.SetCondition(status.Condition{
 				Type:               atomv1alpha1.SourceContainerNotFound,
 				Status:             corev1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 			})
+			cr.Status.WorkerState = atomv1alpha1.WorkerFailed
+			stale = true
+		} else if stderr.Is(e, errSourcePodFinished) {
+			cr.Status.Conditions.SetCondition(status.Condition{
+				Type:               atomv1alpha1.SourcePodFinishied,
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			})
+			cr.Status.WorkerState = atomv1alpha1.WorkerFailed
+			stale = true
 		} else if stderr.Is(e, errSourcePodNotReady) {
+			// will retry
 			stale = cr.Status.Conditions.SetCondition(status.Condition{
 				Type:               atomv1alpha1.SourcePodNotReady,
 				Status:             corev1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 			})
+			result.RequeueAfter = retryLater
 		}
 
-		stale = true
-		cr.Status.WorkerState = atomv1alpha1.WorkerFailed
-
-		return reconcile.Result{}, e
+		return
 	}
 
 	stale = cr.Status.NodeName != nodeName || cr.Status.ContainerID != containerID
@@ -211,13 +223,16 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 	// Set ContainerSnapshot instance as the owner and controller
 	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
 		reqLogger.Error(e, "set controller reference for worker pod")
-		return reconcile.Result{Requeue: true}, nil
+		e = err
+		return
 	}
 
-	reqLogger.Info("Creating a new Pod")
+	reqLogger.Info("Creating worker Pod")
 	err := r.client.Create(ctx, pod)
 	if err != nil {
-		return reconcile.Result{}, err
+		reqLogger.Error(e, "create worker pod")
+		result.RequeueAfter = retryLater
+		return
 	}
 
 	stale = true
@@ -293,8 +308,13 @@ func (r *ReconcileContainerSnapshot) getSourceContainer(ctx context.Context, cr 
 		return
 	}
 
-	if pod.Status.Phase != corev1.PodRunning {
+	switch pod.Status.Phase {
+	case corev1.PodPending, corev1.PodUnknown:
 		e = errSourcePodNotReady
+	case corev1.PodSucceeded, corev1.PodFailed:
+		e = errSourcePodFinished
+	}
+	if e != nil {
 		reqLogger.Error(e, "source pod should be running")
 		return
 	}
@@ -320,7 +340,6 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 		labelKeyPrefix + "snapshot":  cr.Name,
 		labelKeyPrefix + "pod":       cr.Spec.PodName,
 		labelKeyPrefix + "container": cr.Spec.ContainerName,
-		labelKeyPrefix + "image":     cr.Spec.Image,
 	}
 	for k, v := range cr.Labels {
 		labels[k] = v
@@ -336,15 +355,14 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 			ImagePullSecrets: []corev1.LocalObjectReference{{
 				Name: r.workerImagePullSecret,
 			}},
-			RestartPolicy:      corev1.RestartPolicyNever,
-			NodeName:           cr.Status.NodeName,
-			ServiceAccountName: r.workerServiceAccount,
-
+			RestartPolicy: corev1.RestartPolicyNever,
+			NodeName:      cr.Status.NodeName,
 			Containers: []corev1.Container{{
-				Name:    "snapshot-worker",
-				Image:   r.workerImage,
-				Command: []string{"container-snapshot-worker"},
-				Args:    []string{"--container", cr.Status.ContainerID, "--image", cr.Spec.Image, "--snapshot", cr.Name},
+				Name:            "snapshot-worker",
+				Image:           r.workerImage,
+				Command:         []string{"container-snapshot-worker"},
+				Args:            []string{"--container", cr.Status.ContainerID, "--image", cr.Spec.Image, "--snapshot", cr.Name},
+				ImagePullPolicy: corev1.PullAlways,
 				Env: []corev1.EnvVar{{
 					Name: "NAMESPACE",
 					ValueFrom: &corev1.EnvVarSource{

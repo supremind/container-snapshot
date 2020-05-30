@@ -36,7 +36,6 @@ var _ = Describe("snapshot operator", func() {
 		re        = &ReconcileContainerSnapshot{
 			workerImage:           "worker-image:latest",
 			workerImagePullSecret: "worker-image-pull-secret",
-			workerServiceAccount:  "container-snapshot-worker",
 		}
 		simpleSnapshot *atomv1alpha1.ContainerSnapshot
 		sourcePod      *corev1.Pod
@@ -120,9 +119,15 @@ var _ = Describe("snapshot operator", func() {
 		})
 
 		Context("for running source pod", func() {
-			It("should succeed, and create a worker pod", func() {
+			JustBeforeEach(func() {
 				Expect(re.Reconcile(reconcile.Request{NamespacedName: snpKey})).Should(Equal(reconcile.Result{}))
+			})
+
+			It("should succeed", func() {
 				Expect(getWorkerState(ctx, re.client, snpKey)).Should(Equal(atomv1alpha1.WorkerCreated))
+			})
+
+			It("should create a worker pod", func() {
 				out, e := re.getWorkerPod(ctx, namespace, uid)
 
 				Expect(e).Should(BeNil())
@@ -143,18 +148,62 @@ var _ = Describe("snapshot operator", func() {
 			})
 		})
 
+		Context("for pending source pod", func() {
+			BeforeEach(func() {
+				sourcePod.Status.Phase = corev1.PodPending
+			})
+
+			JustBeforeEach(func() {
+				Expect(re.Reconcile(reconcile.Request{NamespacedName: snpKey})).Should(Equal(reconcile.Result{RequeueAfter: retryLater}))
+			})
+
+			It("should not update worker state", func() {
+				Expect(getWorkerState(ctx, re.client, snpKey)).Should(BeEmpty())
+			})
+
+			It("should not create any worker pod", func() {
+				Consistently(func() error {
+					_, e := re.getWorkerPod(ctx, namespace, uid)
+					return e
+				}()).Should(HaveOccurred())
+			})
+		})
+
 		Context("for failed source pod", func() {
+			BeforeEach(func() {
+				sourcePod.Status.Phase = corev1.PodFailed
+			})
+
+			JustBeforeEach(func() {
+				Expect(re.Reconcile(reconcile.Request{NamespacedName: snpKey})).Should(Equal(reconcile.Result{}))
+			})
+
+			It("should fail", func() {
+				Expect(getWorkerState(ctx, re.client, snpKey)).Should(Equal(atomv1alpha1.WorkerFailed))
+			})
+
+			It("should not create any worker pod", func() {
+				Consistently(func() error {
+					_, e := re.getWorkerPod(ctx, namespace, uid)
+					return e
+				}()).Should(HaveOccurred())
+			})
+		})
+
+		Context("for succeeded source pod", func() {
 			BeforeEach(func() {
 				sourcePod.Status.Phase = corev1.PodSucceeded
 			})
 
-			It("should fail, and not create any worker pod", func() {
-				Expect(func() error {
-					_, e := re.Reconcile(reconcile.Request{NamespacedName: snpKey})
-					return e
-				}()).ShouldNot(Succeed())
-				Expect(getWorkerState(ctx, re.client, snpKey)).Should(Equal(atomv1alpha1.WorkerFailed))
+			JustBeforeEach(func() {
+				Expect(re.Reconcile(reconcile.Request{NamespacedName: snpKey})).Should(Equal(reconcile.Result{}))
+			})
 
+			It("should fail", func() {
+				Expect(getWorkerState(ctx, re.client, snpKey)).Should(Equal(atomv1alpha1.WorkerFailed))
+			})
+
+			It("should not create any worker pod", func() {
 				Consistently(func() error {
 					_, e := re.getWorkerPod(ctx, namespace, uid)
 					return e

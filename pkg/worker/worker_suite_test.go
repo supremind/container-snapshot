@@ -92,5 +92,5 @@ func (c *mockDockerClient) ImagePush(ctx context.Context, ref string, options ty
 		return nil, errors.New("can not do image push")
 	}
 
-	return ioutil.NopCloser(strings.NewReader("")), nil
+	return ioutil.NopCloser(strings.NewReader("{}")), nil
 }

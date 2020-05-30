@@ -6,5 +6,5 @@ spec:
   podName: example-pod
   containerName: main
   image: my-snapshots/example-snapshot:v0.0.1
-  imagePullSecrets:
+  imagePushSecrets:
     - name: example-docker-secret
