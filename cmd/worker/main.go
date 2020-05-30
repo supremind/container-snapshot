@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/docker/docker/client"
-	flag "github.com/spf13/pflag"
+	"github.com/operator-framework/operator-sdk/pkg/log/zap"
+	"github.com/spf13/pflag"
 	"github.com/supremind/container-snapshot/pkg/constants"
 	"github.com/supremind/container-snapshot/pkg/worker"
 	"github.com/supremind/container-snapshot/version"
@@ -28,6 +30,14 @@ const (
 var log = logf.Log.WithName("container snapshot worker").WithValues("version", version.Version)
 
 func main() {
+	// Add the zap logger flag set to the CLI. The flag set must
+	// be added before calling pflag.Parse().
+	pflag.CommandLine.AddFlagSet(zap.FlagSet())
+
+	// Add flags registered by imported packages (e.g. glog and
+	// controller-runtime)
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+
 	go func() {
 		e := run()
 		if e != nil {
@@ -42,16 +52,16 @@ func main() {
 
 func run() error {
 	opt := &worker.SnapshotOptions{}
-	flag.StringVarP(&opt.Container, "container", "c", "", "required, docker name of the container going to take a snapshot")
-	flag.StringVarP(&opt.Image, "image", "i", "", "required, name of the snapshot image")
-	flag.StringVar(&opt.Author, "author", "", "snapshot author")
-	flag.StringVar(&opt.Comment, "comment", "", "comment")
+	pflag.StringVarP(&opt.Container, "container", "c", "", "required, docker name of the container going to take a snapshot")
+	pflag.StringVarP(&opt.Image, "image", "i", "", "required, name of the snapshot image")
+	pflag.StringVar(&opt.Author, "author", "", "snapshot author")
+	pflag.StringVar(&opt.Comment, "comment", "", "comment")
 
 	var configRoot string
 	var snapshot string
-	flag.StringVar(&configRoot, "config", defaultConfigRoot, "root path of docker config files, default is /config")
-	flag.StringVar(&snapshot, "snapshot", "", "required, snapshot name")
-	flag.Parse()
+	pflag.StringVar(&configRoot, "config", defaultConfigRoot, "root path of docker config files, default is /config")
+	pflag.StringVar(&snapshot, "snapshot", "", "required, snapshot name")
+	pflag.Parse()
 
 	namespace := os.Getenv(envNamespace)
 	if opt.Container == "" || opt.Image == "" || snapshot == "" || namespace == "" {
@@ -83,10 +93,6 @@ func run() error {
 	e = c.TakeSnapshot(ctx, opt)
 	if e != nil {
 		log.Error(e, "take snapshot failed")
-
-		if e := writeTerminationLog(e); e != nil {
-			log.Error(e, "write termination log failed")
-		}
 
 		var code int32 = 127
 		if errors.Is(e, worker.ErrInvalidImage) {
