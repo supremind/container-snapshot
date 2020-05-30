@@ -38,16 +38,19 @@ func main() {
 	// controller-runtime)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 
+	logf.SetLogger(zap.Logger())
+
 	go func() {
-		e := run()
-		if e != nil {
-			log.Error(e, "snapshot worker failed")
-			os.Exit(1)
-		}
+		shutdown.BornToDie(context.Background())
+		log.Info("shutdown by signals")
+		os.Exit(1)
 	}()
 
-	shutdown.BornToDie(context.Background())
-	log.Info("exit")
+	e := run()
+	if e != nil {
+		log.Error(e, "snapshot worker failed")
+		os.Exit(1)
+	}
 }
 
 func run() error {
