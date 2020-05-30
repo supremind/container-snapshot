@@ -208,12 +208,14 @@ func (r *ReconcileContainerSnapshot) onCreation(ctx context.Context, cr *atomv1a
 	// Set ContainerSnapshot instance as the owner and controller
 	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
 		reqLogger.Error(e, "set controller reference for worker pod")
+		cr.Status.WorkerState = atomv1alpha1.WorkerFailed
 		return reconcile.Result{Requeue: true}, nil
 	}
 
 	reqLogger.Info("Creating a new Pod")
 	err := r.client.Create(ctx, pod)
 	if err != nil {
+		cr.Status.WorkerState = atomv1alpha1.WorkerFailed
 		return reconcile.Result{}, err
 	}
 
@@ -317,7 +319,6 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 		labelKeyPrefix + "snapshot":  cr.Name,
 		labelKeyPrefix + "pod":       cr.Spec.PodName,
 		labelKeyPrefix + "container": cr.Spec.ContainerName,
-		labelKeyPrefix + "image":     cr.Spec.Image,
 	}
 	for k, v := range cr.Labels {
 		labels[k] = v
