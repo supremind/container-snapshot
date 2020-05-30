@@ -114,6 +114,7 @@ func (c *Worker) push(ctx context.Context, auth *types.AuthConfig, ref reference
 
 func (c *Worker) printPushMessage(r io.ReadCloser) error {
 	dec := json.NewDecoder(r)
+	defer r.Close()
 
 	for {
 		var jm jsonmessage.JSONMessage
