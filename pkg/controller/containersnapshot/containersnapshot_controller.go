@@ -336,12 +336,12 @@ func (r *ReconcileContainerSnapshot) newWorkerPod(cr *atomv1alpha1.ContainerSnap
 			}},
 			RestartPolicy: corev1.RestartPolicyNever,
 			NodeName:      cr.Status.NodeName,
-
 			Containers: []corev1.Container{{
-				Name:    "snapshot-worker",
-				Image:   r.workerImage,
-				Command: []string{"container-snapshot-worker"},
-				Args:    []string{"--container", cr.Status.ContainerID, "--image", cr.Spec.Image, "--snapshot", cr.Name},
+				Name:            "snapshot-worker",
+				Image:           r.workerImage,
+				Command:         []string{"container-snapshot-worker"},
+				Args:            []string{"--container", cr.Status.ContainerID, "--image", cr.Spec.Image, "--snapshot", cr.Name},
+				ImagePullPolicy: corev1.PullAlways,
 				Env: []corev1.EnvVar{{
 					Name: "NAMESPACE",
 					ValueFrom: &corev1.EnvVarSource{
