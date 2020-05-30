@@ -14,7 +14,6 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/supremind/container-snapshot/pkg/apis"
-	atomv1alpha1 "github.com/supremind/container-snapshot/pkg/apis/atom/v1alpha1"
 	"github.com/supremind/container-snapshot/pkg/controller"
 	"github.com/supremind/container-snapshot/version"
 
@@ -218,7 +217,7 @@ func serveCRMetrics(cfg *rest.Config, operatorNs string) error {
 func addIndexers(mgr manager.Manager) {
 	mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "metadata.ownerReferences.uid", func(o kruntime.Object) []string {
 		var uids []string
-		for _, owner := range o.(*atomv1alpha1.ContainerSnapshot).OwnerReferences {
+		for _, owner := range o.(*corev1.Pod).OwnerReferences {
 			uids = append(uids, string(owner.UID))
 		}
 		return uids
