@@ -25,4 +25,5 @@ ENTRYPOINT [ "container-snapshot-operator" ]
 
 FROM alpine:3.11 AS release-worker
 COPY --from=build-worker /src/build/_output/worker /usr/local/bin/container-snapshot-worker
+RUN chmod +x /usr/local/bin/container-snapshot-worker
 ENTRYPOINT [ "container-snapshot-worker" ]
