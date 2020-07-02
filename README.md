@@ -1,9 +1,13 @@
+![Actions Status](https://github.com/supremind/container-snapshot/workflows/Container%20Snapshot/badge.svg)
+
+
 # Container Snapshot Operator
 
 Taking snapshots for Docker containers running in Kubernetes.
 
 This is a rewritten of [qiniu-ava/snapshot-operator](https://github.com/qiniu-ava/snapshot-operator), 
 and is inspired by [wulibin163/kubepush](https://github.com/wulibin163/kubepush).
+
 
 ## How it works
 
