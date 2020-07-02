@@ -1,4 +1,6 @@
-![Actions Status](https://github.com/supremind/container-snapshot/workflows/Container%20Snapshot/badge.svg)
+[![Actions Status](https://github.com/supremind/container-snapshot/workflows/Container%20Snapshot/badge.svg)](https://github.com/supremind/container-snapshot/actions?query=workflow%3A%22Container+Snapshot%22)
+[![Coverage Status](https://coveralls.io/repos/github/supremind/container-snapshot/badge.svg?branch=master)](https://coveralls.io/github/supremind/container-snapshot?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/supremind/container-snapshot)](https://goreportcard.com/report/github.com/supremind/container-snapshot) 
 
 
 # Container Snapshot Operator
@@ -34,7 +36,7 @@ and is inspired by [wulibin163/kubepush](https://github.com/wulibin163/kubepush)
 
             kubectl apply -f example/pod.yaml
 
-    2. create a image push secret
+    2. create an image push secret
 
         The easies way to do this is [creating one based on existing Docker credentials](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/#registry-secret-existing-credentials), more options could be found in the same page.
 

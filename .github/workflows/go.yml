@@ -7,24 +7,31 @@ on:
     branches: [ master ]
 
 jobs:
-  test:
-    name: test
+  test-and-coverage:
+    name: test and coverage
     runs-on: ubuntu-latest
-
     steps:
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
         go-version: ^1.13
       id: go
-    - name: Check out code into the Go module directory
+    - name: Checkout code
       uses: actions/checkout@v2
-    - name: Get dependencies
+    - name: Calc coverage 
       run: |
-        go mod download
-        go mod verify
-    - name: Test
-      run: go test -v ./...
+        export PATH=$PATH:$(go env GOPATH)/bin   
+        go test -v -covermode=count -coverprofile=coverage.out ./...
+    - name: Convert coverage to lcov
+      uses: jandelgado/gcov2lcov-action@v1.0.0
+      with:
+          infile: coverage.out
+          outfile: coverage.lcov
+    - name: Coveralls
+      uses: coverallsapp/github-action@v1.0.1
+      with:
+          github-token: ${{ secrets.github_token }}
+          path-to-lcov: coverage.lcov
 
   # see https://github.com/marketplace/actions/build-and-push-docker-images
   build:
