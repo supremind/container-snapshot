@@ -1,0 +1,10 @@
+apiVersion: atom.supremind.com/v1alpha1
+kind: ContainerSnapshot
+metadata:
+  name: example-container-snapshot
+spec:
+  podName: example-pod
+  containerName: example-container
+  image: my-snapshots/example-snapshot:v0.0.1
+  imagePushSecrets:
+    - name: example-docker-secret
