@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: example-pod
+  labels:
+    name: example-pod
+spec:
+  containers:
+  - name: example-container
+    image: busybox
+    command:
+    - sh
+    - -c
+    - while :; do date >> /dates; sleep 10; done
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "500m"

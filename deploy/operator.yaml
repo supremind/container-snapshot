@@ -32,5 +32,11 @@ spec:
               value: "container-snapshot"
             - name: WORKER_IMAGE
               value: supremind/container-snapshot-worker:latest
-            - name: WORKER_IMAGE_PULL_SECRET
-              value: ""
+            # uncomment following lines and set a secret name
+            # if you are using an alternative worker image
+            # - name: WORKER_IMAGE_PULL_SECRET
+            #   value: ""
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
