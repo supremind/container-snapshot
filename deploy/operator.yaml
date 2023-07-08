@@ -17,7 +17,7 @@ spec:
         - name: container-snapshot
           image: supremind/container-snapshot-operator:latest
           command:
-          - container-snapshot
+          - container-snapshot-operator
           imagePullPolicy: Always
           env:
             - name: WATCH_NAMESPACE
